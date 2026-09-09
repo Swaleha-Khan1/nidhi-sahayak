@@ -1,0 +1,6 @@
+{
+  "name": "Nidhi Sahayak - NSFDC Loan Scheme Assistant",
+  "description": "AI-Driven rule-based government loan and welfare scheme matching platform across NSFDC, NSTFDC, NBCFDC, NMDFC, NDFDC, NSKFDC, MUDRA, and MSME (SIH Problem Statement 26092, MoSJE).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
