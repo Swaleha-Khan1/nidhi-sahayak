@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { explainScheme } from '../lib/geminiClient';
 import { SchemeRecommendation, UserProfile } from '../types';
 import { translations } from '../data/translations';
 import { evaluateEligibility, formatIndianCurrency, formatFullIndianCurrency } from '../data/schemes';
@@ -129,24 +130,15 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = () => {
     setIsAiExplaining(true);
     setAiExplanation(null);
     setAiExplainError(null);
-    try {
-      const response = await fetch('/api/ai/explain-scheme', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schemeName: primaryScheme.nameEn,
-          agency: primaryScheme.agency,
-          projectCost: sliderValue,
-          annualIncome: userProfile.annualIncome,
-          userCategory: userProfile.category,
-          language,
-        }),
-      });
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => null);
-        throw new Error(errJson?.error || 'Failed to generate explanation');
-      }
-      const data = await response.json();
+    try{
+    const data = await explainScheme({
+      schemeName: primaryScheme.nameEn,
+      agency: primaryScheme.agency,
+      projectCost: sliderValue,
+      annualIncome: userProfile.annualIncome,
+      userCategory: userProfile.category,
+      language,
+    });
       setAiExplanation(data.explanation);
     } catch (err: any) {
       console.error(err);

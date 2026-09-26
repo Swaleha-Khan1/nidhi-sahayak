@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { parseSituation } from '../lib/geminiClient';
 import { BeneficiaryCategory, SpecialOccupation, PurposeType, UserProfile } from '../types';
 import { translations } from '../data/translations';
 import { evaluateEligibility } from '../data/schemes';
@@ -63,16 +64,8 @@ export const IntakeScreen: React.FC<IntakeScreenProps> = ({
     setAiMessage(null);
     setChatErrorMessage(null);
     setExtractedPreview(null);
-
-    try {
-      const response = await fetch('/api/ai/parse-situation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userText: prompt, language }),
-      });
-
-      if (!response.ok) throw new Error('Failed to parse situation');
-      const data = await response.json();
+    try{
+    const data = await parseSituation(prompt, language);
 
       // Check if the input was deemed not confident or garbage
       if (data.isConfident === false || data.errorMessageEn) {
