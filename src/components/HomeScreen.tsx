@@ -1,23 +1,50 @@
 import React from 'react';
-import { Language } from '../types';
 import { translations } from '../data/translations';
+import { useApp } from '../context/AppContext';
 
 interface HomeScreenProps {
-  language: Language;
-  onStartForm: () => void;
-  onStartChat: () => void;
-  onOpenCalculator: () => void;
-  onOpenLocator: () => void;
+  language?: 'en' | 'hi';
+  onStartForm?: () => void;
+  onStartChat?: () => void;
+  onOpenCalculator?: () => void;
+  onOpenLocator?: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
-  language,
   onStartForm,
   onStartChat,
   onOpenCalculator,
   onOpenLocator,
 }) => {
+  const {
+    language,
+    setActiveTab,
+    setIntakeInitialMode,
+  } = useApp();
+
   const t = translations[language];
+
+  const handleStartForm = () => {
+    setIntakeInitialMode('form');
+    if (onStartForm) onStartForm();
+    else setActiveTab('intake');
+  };
+
+  const handleStartChat = () => {
+    setIntakeInitialMode('chat');
+    if (onStartChat) onStartChat();
+    else setActiveTab('intake');
+  };
+
+  const handleOpenCalculator = () => {
+    if (onOpenCalculator) onOpenCalculator();
+    else setActiveTab('calculator');
+  };
+
+  const handleOpenLocator = () => {
+    if (onOpenLocator) onOpenLocator();
+    else setActiveTab('locator');
+  };
 
   return (
     <div className="w-full max-w-[800px] mx-auto px-4 md:px-6 py-4 md:py-6 flex flex-col gap-6">
@@ -38,7 +65,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-primary/30 via-transparent to-transparent pointer-events-none" />
           <div className="absolute bottom-3 left-3 bg-surface-container-lowest/90 backdrop-blur-xs px-3 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 shadow-xs">
             <span className="material-symbols-outlined text-[14px] text-secondary">verified</span>
-            <span>National SC Finance & Development Corp.</span>
+            <span>National Welfare Schemes & Credit Portal</span>
           </div>
         </div>
       </section>
@@ -47,7 +74,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Card 1: Structured Form Mode */}
         <button
-          onClick={onStartForm}
+          onClick={handleStartForm}
           className="group bg-surface-container-lowest rounded-2xl p-5 border border-primary/10 shadow-[0_4px_14px_rgba(0,6,102,0.08)] flex flex-col items-start gap-3 hover:bg-surface-container-low hover:border-primary/25 transition-all duration-200 active:scale-[0.98] text-left relative overflow-hidden cursor-pointer"
         >
           <div className="w-12 h-12 rounded-full bg-primary-fixed flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
@@ -74,7 +101,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         {/* Card 2: AI / Chat Natural Mode */}
         <button
-          onClick={onStartChat}
+          onClick={handleStartChat}
           className="group bg-surface-container-lowest rounded-2xl p-5 border border-secondary/20 shadow-[0_4px_14px_rgba(143,78,0,0.08)] flex flex-col items-start gap-3 hover:bg-surface-container-low hover:border-secondary/40 transition-all duration-200 active:scale-[0.98] text-left relative overflow-hidden cursor-pointer"
         >
           {/* Orange indicator bar */}
@@ -105,8 +132,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Quick Direct Tools Grid */}
       <section className="grid grid-cols-2 gap-3 pt-1">
         <button
-          onClick={onOpenCalculator}
-          className="bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 rounded-xl p-3.5 flex items-center gap-3 transition-colors text-left"
+          onClick={handleOpenCalculator}
+          className="bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 rounded-xl p-3.5 flex items-center gap-3 transition-colors text-left cursor-pointer"
         >
           <span className="material-symbols-outlined text-primary text-xl bg-primary-fixed/60 p-2 rounded-lg">calculate</span>
           <div>
@@ -116,8 +143,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
 
         <button
-          onClick={onOpenLocator}
-          className="bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 rounded-xl p-3.5 flex items-center gap-3 transition-colors text-left"
+          onClick={handleOpenLocator}
+          className="bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 rounded-xl p-3.5 flex items-center gap-3 transition-colors text-left cursor-pointer"
         >
           <span className="material-symbols-outlined text-secondary text-xl bg-secondary-fixed/60 p-2 rounded-lg">distance</span>
           <div>

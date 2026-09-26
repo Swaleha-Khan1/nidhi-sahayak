@@ -1,34 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Language, UserProfile, SchemeRecommendation } from '../types';
+import { SchemeRecommendation, UserProfile } from '../types';
 import { translations } from '../data/translations';
 import { evaluateEligibility, formatIndianCurrency, formatFullIndianCurrency } from '../data/schemes';
+import { useApp } from '../context/AppContext';
 
 interface RecommenderScreenProps {
-  language: Language;
-  profile: UserProfile;
-  onUpdateCost: (newCost: number) => void;
-  onProceedToCalculator: (scheme: SchemeRecommendation) => void;
-  onProceedToChecklist: (scheme: SchemeRecommendation) => void;
+  language?: 'en' | 'hi';
+  profile?: UserProfile;
+  onUpdateCost?: (newCost: number) => void;
+  onProceedToCalculator?: (scheme: SchemeRecommendation) => void;
+  onProceedToChecklist?: (scheme: SchemeRecommendation) => void;
 }
 
-export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
-  language,
-  profile,
-  onUpdateCost,
-  onProceedToCalculator,
-  onProceedToChecklist,
-}) => {
+export const RecommenderScreen: React.FC<RecommenderScreenProps> = () => {
+  const {
+    language,
+    userProfile,
+    updateUserProfile,
+    setActiveTab,
+    selectSchemeAndNavigateToCalculator,
+    selectSchemeAndNavigateToChecklist,
+  } = useApp();
+
   const t = translations[language];
-  const [sliderValue, setSliderValue] = useState<number>(profile.projectCost || 120000);
+  const [sliderValue, setSliderValue] = useState<number>(userProfile.projectCost || 120000);
   const [previousSchemeId, setPreviousSchemeId] = useState<string>('');
   const [animatePop, setAnimatePop] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [aiExplainError, setAiExplainError] = useState<string | null>(null);
   const [isAiExplaining, setIsAiExplaining] = useState(false);
   const particlesContainerRef = useRef<HTMLDivElement>(null);
 
+  // Synchronize local slider with userProfile.projectCost
+  useEffect(() => {
+    if (typeof userProfile.projectCost === 'number' && userProfile.projectCost > 0) {
+      setSliderValue(userProfile.projectCost);
+      setAiExplanation(null);
+      setAiExplainError(null);
+    }
+  }, [userProfile.projectCost, userProfile.purpose, userProfile.educationLocation]);
+
   // Evaluate eligibility using dataset-driven rule engine
-  const currentProfile: UserProfile = { ...profile, projectCost: sliderValue };
+  const currentProfile: UserProfile = { ...userProfile, projectCost: sliderValue };
+  const evalResult = evaluateEligibility(currentProfile);
+
   const {
+    hasSufficientData,
     isGatePassed,
     gateFailureReasonEn,
     gateFailureReasonHi,
@@ -36,29 +53,23 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
     primaryScheme,
     allEligibleSchemes,
     nearMisses,
-  } = evaluateEligibility(currentProfile);
+  } = evalResult;
 
-  const isEducation = profile.purpose === 'education';
-  const sliderMax = isEducation ? (profile.educationLocation === 'abroad' ? 4000000 : 3000000) : 5000000;
-
-  // Keep sliderValue synchronized whenever profile changes from intake or chat extraction
-  useEffect(() => {
-    if (typeof profile.projectCost === 'number') {
-      setSliderValue(profile.projectCost);
-      setAiExplanation(null);
-    }
-  }, [profile.projectCost, profile.purpose, profile.educationLocation]);
+  const isEducation = userProfile.purpose === 'education';
+  const sliderMax = isEducation ? (userProfile.educationLocation === 'abroad' ? 4000000 : 3000000) : 5000000;
 
   // Trigger pop glow animation & particles when scheme changes dynamically across threshold
   useEffect(() => {
-    if (previousSchemeId && previousSchemeId !== primaryScheme.id) {
+    if (primaryScheme && previousSchemeId && previousSchemeId !== primaryScheme.id) {
       setAnimatePop(true);
       createParticles();
       const timer = setTimeout(() => setAnimatePop(false), 600);
       return () => clearTimeout(timer);
     }
-    setPreviousSchemeId(primaryScheme.id);
-  }, [primaryScheme.id]);
+    if (primaryScheme) {
+      setPreviousSchemeId(primaryScheme.id);
+    }
+  }, [primaryScheme?.id]);
 
   const createParticles = () => {
     if (!particlesContainerRef.current) return;
@@ -89,14 +100,15 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     setSliderValue(val);
-    onUpdateCost(val);
+    updateUserProfile({ projectCost: val });
     setAiExplanation(null);
+    setAiExplainError(null);
   };
 
   // Helper text under slider based on cost threshold
   const getSliderHelpText = () => {
     if (isEducation) {
-      const isAbroad = profile.educationLocation === 'abroad';
+      const isAbroad = userProfile.educationLocation === 'abroad';
       const cap = isAbroad ? '₹40 Lakh' : '₹30 Lakh';
       return language === 'hi'
         ? `शिक्षा ऋण ${isAbroad ? 'विदेश' : 'भारत'} में अध्ययन हेतु अधिकतम ${cap} तक कवर करता है।`
@@ -113,296 +125,300 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
 
   // Generate AI Explanation for current scheme
   const handleExplainWithAi = async () => {
+    if (!primaryScheme) return;
     setIsAiExplaining(true);
     setAiExplanation(null);
+    setAiExplainError(null);
     try {
       const response = await fetch('/api/ai/explain-scheme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          schemeName: language === 'hi' ? primaryScheme.nameHi : primaryScheme.nameEn,
+          schemeName: primaryScheme.nameEn,
           agency: primaryScheme.agency,
           projectCost: sliderValue,
-          annualIncome: profile.annualIncome,
-          userCategory: profile.category.toUpperCase(),
+          annualIncome: userProfile.annualIncome,
+          userCategory: userProfile.category,
           language,
-          category: primaryScheme.category,
         }),
       });
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null);
+        throw new Error(errJson?.error || 'Failed to generate explanation');
+      }
       const data = await response.json();
       setAiExplanation(data.explanation);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setAiExplanation(
+      // Visible error state instead of silent fallback to default values
+      setAiExplainError(
         language === 'hi'
-          ? `यह योजना आपकी ₹${sliderValue.toLocaleString('en-IN')} की लागत हेतु सर्वश्रेष्ठ है। इसमें रियायती ब्याज दर और मोरेटोरियम अवधि दी गई है।`
-          : `This scheme is well-matched for your ₹${sliderValue.toLocaleString('en-IN')} requirement with concessional interest and initial moratorium benefits.`
+          ? 'एआई व्याख्या सेवा अस्थायी रूप से अनुपलब्ध है। कृपया पुनः प्रयास करें।'
+          : 'AI explanation service is temporarily unavailable. Please try again.'
       );
     } finally {
       setIsAiExplaining(false);
     }
   };
 
-  return (
-    <div className="w-full max-w-[840px] mx-auto px-4 md:px-6 py-4 md:py-6 flex flex-col gap-6">
-      {/* Header */}
-      <section>
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h2 className="font-headline text-2xl md:text-3xl font-bold text-primary">
-            {t.matchesTitle}
+  // If user profile is incomplete or unextracted, show empty state instead of false recommendations
+  if (!hasSufficientData || !primaryScheme) {
+    return (
+      <div className="w-full max-w-[840px] mx-auto px-4 md:px-6 py-10 flex flex-col items-center justify-center">
+        <div className="w-full bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/30 card-shadow flex flex-col items-center text-center gap-4 animate-fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+            <span className="material-symbols-outlined text-4xl">travel_explore</span>
+          </div>
+          <h2 className="font-headline text-2xl font-bold text-primary">
+            {t.noProfileTitle}
           </h2>
-          <span className="text-xs font-bold px-3 py-1 bg-surface-container-high text-on-surface rounded-full border border-outline-variant/30">
-            Category: <strong className="text-primary uppercase">{profile.category}</strong>
-            {profile.specialOccupation && profile.specialOccupation !== 'none' && ` • ${profile.specialOccupation.replace('_', ' ')}`}
-          </span>
+          <p className="font-body text-sm text-on-surface-variant max-w-md leading-relaxed">
+            {t.noProfileDesc}
+          </p>
+          <button
+            type="button"
+            onClick={() => setActiveTab('intake')}
+            className="mt-2 px-6 py-3 bg-primary text-on-primary font-body font-bold text-sm rounded-xl hover:bg-primary-container transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-95"
+          >
+            <span className="material-symbols-outlined text-base">edit_note</span>
+            <span>{t.goToSmartIntake}</span>
+          </button>
         </div>
-        <p className="font-body text-sm text-on-surface-variant">
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-[840px] mx-auto px-4 md:px-6 py-4 md:py-6 flex flex-col gap-6 relative">
+      {/* Invisible particle layer for threshold animation */}
+      <div ref={particlesContainerRef} className="absolute inset-0 pointer-events-none overflow-hidden z-20" />
+
+      {/* Screen Header */}
+      <div className="flex flex-col gap-1">
+        <h2 className="font-headline text-2xl md:text-3xl font-bold text-primary">
+          {t.matchesTitle}
+        </h2>
+        <p className="font-body text-xs md:text-sm text-on-surface-variant">
           {t.matchesSubtitle}
         </p>
-      </section>
+      </div>
 
-      {/* Fallback Notice (Shown if user's category has zero specific schemes or requires open schemes) */}
-      {isFallbackActive && (
-        <div className="bg-amber-50/90 border-l-4 border-amber-500 p-4 rounded-xl flex flex-col gap-1.5 shadow-xs">
-          <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
-            <span className="material-symbols-outlined text-xl text-amber-600">info</span>
-            <span>{t.fallbackNoticeTitle}</span>
-          </div>
-          <p className="font-body text-xs md:text-sm text-amber-950 leading-relaxed">
-            {language === 'hi' ? t.fallbackNoticeMsg : t.fallbackNoticeMsg}
-          </p>
-        </div>
-      )}
-
-      {/* Income Gate Failure Alert (If Income exceeds scheme threshold) */}
-      {!isGatePassed && (
-        <div className="bg-error-container/40 border-l-4 border-error p-4 rounded-xl flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-error font-bold text-sm">
-            <span className="material-symbols-outlined text-xl">warning</span>
-            <span>{t.gateFailedTitle}</span>
-          </div>
-          <p className="font-body text-xs md:text-sm text-on-surface">
-            {language === 'hi' ? gateFailureReasonHi : gateFailureReasonEn}
-          </p>
-          <div className="pt-1 text-xs text-on-surface-variant font-semibold">
-            {t.exploreGeneralOptions}
-          </div>
-        </div>
-      )}
-
-      {/* What-If Slider (Interactive Real-Time Rule Switching) */}
-      <section className="bg-surface-container-lowest p-5 rounded-2xl floating-shadow border border-surface-variant relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-secondary-container to-secondary" />
-        
-        <div className="flex justify-between items-center mb-3">
-          <label htmlFor="project-cost-slider" className="font-body font-bold text-sm text-on-surface">
+      {/* Dynamic Interactive Cost Slider */}
+      <div className="bg-surface-container-lowest rounded-2xl p-5 md:p-6 card-shadow border border-outline-variant/30 flex flex-col gap-4">
+        <div className="flex justify-between items-center flex-wrap gap-2">
+          <label htmlFor="cost-slider" className="font-body font-bold text-sm text-on-surface">
             {isEducation ? t.courseFeeLabel : t.adjustCostLabel}
           </label>
-          <span className="font-body text-xs font-semibold text-secondary bg-secondary-fixed/50 px-2.5 py-1 rounded-full">
-            National What-If Engine
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-primary-fixed/50 text-primary uppercase">
+              Category: {userProfile.category?.toUpperCase()}
+            </span>
+            <span className="font-headline text-xl md:text-2xl font-bold text-primary px-3 py-1 bg-primary/10 rounded-xl">
+              {formatFullIndianCurrency(sliderValue)}
+            </span>
+          </div>
+        </div>
+
+        {/* Range Input Slider */}
+        <div className="relative pt-2 pb-1">
+          <input
+            id="cost-slider"
+            type="range"
+            min={10000}
+            max={sliderMax}
+            step={10000}
+            value={sliderValue}
+            onChange={handleSliderChange}
+            className="w-full h-3 bg-surface-container-high rounded-lg appearance-none cursor-pointer accent-primary focus:outline-none"
+          />
+        </div>
+
+        {/* Milestone Tick Labels */}
+        <div className="flex justify-between text-[11px] font-bold text-on-surface-variant px-1 -mt-1">
+          <span>₹10k</span>
+          <span>₹50k (Micro)</span>
+          <span>₹1.4L</span>
+          <span>₹5L</span>
+          <span>₹20L</span>
+          <span>{formatIndianCurrency(sliderMax)}</span>
+        </div>
+
+        <p className="font-body text-xs text-on-surface-variant bg-surface-container-low p-2.5 rounded-xl border border-outline-variant/20 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-xs text-secondary shrink-0">info</span>
+          <span>{getSliderHelpText()}</span>
+        </p>
+      </div>
+
+      {/* Fallback Notification Banner */}
+      {isFallbackActive && (
+        <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-4 flex items-start gap-3 animate-fade-in shadow-xs">
+          <span
+            className="material-symbols-outlined text-amber-700 text-2xl shrink-0 mt-0.5"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            info
+          </span>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-sm text-amber-900">{t.fallbackNoticeTitle}</span>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-amber-200/70 text-amber-900 rounded">
+                Open to All Categories
+              </span>
+            </div>
+            <p className="font-body text-xs text-amber-800 leading-relaxed">
+              {t.fallbackNoticeMsg}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Eligibility Notice Banner */}
+      {!isGatePassed && (
+        <div className="bg-error-container/20 border-2 border-error/40 rounded-2xl p-4 flex items-start gap-3 animate-shake shadow-xs">
+          <span
+            className="material-symbols-outlined text-error text-2xl shrink-0 mt-0.5"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            report
+          </span>
+          <div className="space-y-1">
+            <span className="font-bold text-sm text-error">{t.gateFailedTitle}</span>
+            <p className="font-body text-xs text-on-surface leading-relaxed">
+              {language === 'hi' ? gateFailureReasonHi : gateFailureReasonEn}
+            </p>
+            <p className="font-body text-xs text-primary font-semibold pt-1">
+              💡 {t.exploreGeneralOptions}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Primary Recommended Scheme Card */}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-body font-bold text-primary uppercase tracking-wider">
+            Primary Recommended Match
+          </span>
+          <span className="text-xs font-bold text-secondary">
+            {primaryScheme.matchPercentage}% Match
           </span>
         </div>
 
-        <div className="flex flex-col gap-2 mt-2">
-          <div className="flex justify-between items-baseline mb-2">
-            <span className="font-headline text-2xl md:text-3xl font-bold text-primary tracking-tight">
-              {formatFullIndianCurrency(sliderValue)}
-            </span>
-            <span className="font-body text-xs text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-full font-semibold">
-              {formatIndianCurrency(sliderValue)}
-            </span>
-          </div>
-
-          <div className="relative pt-1 pb-6">
-            <input
-              id="project-cost-slider"
-              type="range"
-              min="0"
-              max={sliderMax}
-              step="10000"
-              value={sliderValue}
-              onChange={handleSliderChange}
-              className="custom-range-slider"
-              style={{
-                background: `linear-gradient(to right, #ff8f00 0%, #ff8f00 ${(sliderValue / sliderMax) * 100}%, #e3e2e1 ${(sliderValue / sliderMax) * 100}%, #e3e2e1 100%)`,
-              }}
-            />
-            <div className="flex justify-between mt-2 absolute w-full px-1 text-xs text-on-surface-variant font-semibold">
-              <span>₹0</span>
-              {isEducation ? (
-                <>
-                  <span className="text-secondary font-bold">
-                    {profile.educationLocation === 'abroad' ? '₹20 Lakh' : '₹15 Lakh'}
-                  </span>
-                  <span>{profile.educationLocation === 'abroad' ? '₹40 Lakh (Cap)' : '₹30 Lakh (Cap)'}</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-secondary font-bold">₹1.4L (Micro Threshold)</span>
-                  <span>₹50 Lakh</span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <p className="font-body text-xs text-on-surface-variant mt-1 italic flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[16px] text-primary">info</span>
-          <span>{getSliderHelpText()}</span>
-        </p>
-      </section>
-
-      {/* Dynamic Recommendation Card (Pops & Glows on threshold crossing) */}
-      <section
-        className={`bg-surface-container-lowest rounded-2xl card-shadow border-l-4 border-l-tertiary-container relative overflow-hidden transition-all duration-300 ${
-          animatePop ? 'animate-pop-glow' : ''
-        }`}
-      >
-        <div className="p-5 md:p-6 flex flex-col gap-4">
-          <div className="flex justify-between items-start flex-wrap gap-3">
+        <div
+          className={`bg-surface-container-lowest rounded-2xl border-2 border-primary card-shadow p-5 md:p-6 flex flex-col gap-4 relative overflow-hidden transition-all duration-300 ${
+            animatePop ? 'animate-pop-glow scale-[1.01]' : ''
+          }`}
+        >
+          {/* Top Banner & Agency */}
+          <div className="flex justify-between items-start flex-wrap gap-2">
             <div>
-              {/* Agency Tag & Match Badge with Particle emitter anchor */}
-              <div className="flex items-center gap-2 flex-wrap mb-2">
-                <div className="relative inline-block">
-                  <div
-                    ref={particlesContainerRef}
-                    className="absolute inset-0 pointer-events-none"
-                  />
-                  <div className="inline-flex items-center gap-1.5 bg-tertiary-fixed-dim text-on-tertiary-container px-3 py-1 rounded-full font-body font-bold text-xs shadow-xs">
-                    <span
-                      className="material-symbols-outlined text-[16px]"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      check_circle
-                    </span>
-                    <span>{primaryScheme.matchPercentage}% Match</span>
-                  </div>
-                </div>
-
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-primary-fixed text-primary border border-primary/20">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary text-on-primary">
                   {primaryScheme.agencyShort}
                 </span>
-
-                {primaryScheme.isCategoryFallback && (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                    Open National Scheme
+                <span className="text-xs font-bold text-on-surface-variant">
+                  {primaryScheme.agency}
+                </span>
+                {primaryScheme.verificationStatus && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[12px]">verified</span>
+                    <span>Live 2026</span>
                   </span>
                 )}
               </div>
-
-              <h3 className="font-headline text-xl md:text-2xl font-bold text-on-surface">
+              <h3 className="font-headline text-xl md:text-2xl font-bold text-primary">
                 {language === 'hi' ? primaryScheme.nameHi : primaryScheme.nameEn}
               </h3>
-              <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                {primaryScheme.agency}
-              </p>
             </div>
 
-            <div className="text-right shrink-0">
-              <span className="block font-body text-xs text-on-surface-variant font-medium">
-                {t.maxAmount}
-              </span>
-              <span className="font-headline text-2xl md:text-3xl font-bold text-primary">
-                {formatIndianCurrency(primaryScheme.maxLoanAmount)}
+            <div className="text-right">
+              <span className="text-xs text-on-surface-variant block">{t.maxAmount}</span>
+              <span className="font-headline text-xl font-bold text-primary">
+                Up to {formatIndianCurrency(primaryScheme.maxLoanAmount)}
               </span>
             </div>
           </div>
 
-          {/* Eligibility reasons based on dataset */}
-          <div className="bg-surface-container-low rounded-xl p-3.5 space-y-2">
-            <p className="font-body font-bold text-xs text-on-surface uppercase tracking-wider">
-              {t.eligibleBecause}
-            </p>
-            <ul className="flex flex-col gap-1.5">
+          {/* Scheme Parameters Grid */}
+          <div className="grid grid-cols-3 gap-2 py-3 border-y border-outline-variant/30 text-center">
+            <div className="p-2 bg-surface-container-low rounded-xl">
+              <span className="text-[11px] text-on-surface-variant block">{t.interestRate}</span>
+              <span className="font-headline text-base md:text-lg font-bold text-primary">
+                {userProfile.gender === 'female' && primaryScheme.interestRateWomen
+                  ? `${primaryScheme.interestRateWomen}% (Women)`
+                  : `${primaryScheme.interestRate}% p.a.`}
+              </span>
+              <span className="text-[10px] text-on-surface-variant block mt-0.5">
+                {language === 'hi' ? primaryScheme.interestRateNoteHi : primaryScheme.interestRateNoteEn}
+              </span>
+            </div>
+            <div className="p-2 bg-surface-container-low rounded-xl">
+              <span className="text-[11px] text-on-surface-variant block">{t.repayment}</span>
+              <span className="font-headline text-base md:text-lg font-bold text-primary">
+                {primaryScheme.repaymentYears} Years
+              </span>
+              <span className="text-[10px] text-on-surface-variant block mt-0.5">
+                ({primaryScheme.repaymentMonths} months)
+              </span>
+            </div>
+            <div className="p-2 bg-surface-container-low rounded-xl">
+              <span className="text-[11px] text-on-surface-variant block">{t.moratorium}</span>
+              <span className="font-headline text-base md:text-lg font-bold text-secondary">
+                {primaryScheme.moratoriumMonths > 0 ? `${primaryScheme.moratoriumMonths} Months` : 'None'}
+              </span>
+              <span className="text-[10px] text-on-surface-variant block mt-0.5">
+                Repayment holiday
+              </span>
+            </div>
+          </div>
+
+          {/* Reasons for Eligibility */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold text-on-surface block">{t.eligibleBecause}</span>
+            <ul className="space-y-1">
               {(language === 'hi' ? primaryScheme.reasonsHi : primaryScheme.reasonsEn).map((reason, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="material-symbols-outlined text-tertiary-container text-base shrink-0 mt-0.5">
-                    check
-                  </span>
-                  <span className="font-body text-xs md:text-sm text-on-surface-variant">
-                    {reason}
-                  </span>
+                <li key={idx} className="flex items-center gap-2 text-xs text-on-surface-variant">
+                  <span className="material-symbols-outlined text-sm text-secondary-container">check_circle</span>
+                  <span>{reason}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Scheme Parameters Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 border-t border-surface-variant pt-3.5">
-            <div>
-              <span className="block font-body text-xs text-on-surface-variant flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px]">percent</span> {t.interestRate}
-              </span>
-              <span className="font-body font-bold text-sm md:text-base text-on-surface">
-                {primaryScheme.interestRate}% p.a.
-              </span>
-              <span className="block text-[11px] text-on-surface-variant">
-                {language === 'hi' ? primaryScheme.interestRateNoteHi : primaryScheme.interestRateNoteEn}
-              </span>
-            </div>
-
-            <div>
-              <span className="block font-body text-xs text-on-surface-variant flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px]">calendar_month</span> {t.repayment}
-              </span>
-              <span className="font-body font-bold text-sm md:text-base text-on-surface">
-                Max {primaryScheme.repaymentYears} Years
-              </span>
-              <span className="block text-[11px] text-on-surface-variant">
-                ({primaryScheme.repaymentMonths} monthly installments)
-              </span>
-            </div>
-
-            <div className="col-span-2 md:col-span-1">
-              <span className="block font-body text-xs text-on-surface-variant flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px]">timer</span> {t.moratorium}
-              </span>
-              <span className="font-body font-bold text-sm md:text-base text-on-surface">
-                {primaryScheme.moratoriumMonths} Months Moratorium
-              </span>
-              <span className="block text-[11px] text-on-surface-variant">
-                Repayment holiday period
-              </span>
-            </div>
-          </div>
-
-          {/* Application Route Info */}
-          {primaryScheme.applicationRoute && (
-            <div className="p-3 bg-surface-container rounded-xl text-xs flex items-start gap-2 text-on-surface-variant">
-              <span className="material-symbols-outlined text-sm text-primary shrink-0 mt-0.5">how_to_reg</span>
-              <div>
-                <strong className="text-on-surface">Application Channel:</strong> {primaryScheme.applicationRoute}
-                {primaryScheme.officialSourceLink && (
-                  <div className="mt-1">
-                    <a
-                      href={primaryScheme.officialSourceLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary font-bold hover:underline inline-flex items-center gap-1"
-                    >
-                      Official Scheme Portal <span className="material-symbols-outlined text-xs">open_in_new</span>
-                    </a>
-                  </div>
-                )}
+          {/* AI Explanation Accordion if triggered */}
+          {aiExplanation && (
+            <div className="p-3.5 bg-primary-fixed/20 border border-primary/20 rounded-xl space-y-1 animate-pop-glow">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                <span>AI Eligibility Analysis</span>
               </div>
+              <p className="font-body text-xs text-on-surface leading-relaxed">
+                {aiExplanation}
+              </p>
             </div>
           )}
 
-          {/* AI Explanation Accordion/Card */}
-          {aiExplanation && (
-            <div className="bg-primary-fixed/30 border border-primary/20 rounded-xl p-3.5 text-xs md:text-sm text-on-surface leading-relaxed animate-pop-glow space-y-1.5">
-              <div className="flex items-center gap-1.5 text-primary font-bold text-xs">
-                <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                <span>AI Guidance for {primaryScheme.agencyShort} Applicant</span>
+          {/* AI Explanation Error Alert if failed */}
+          {aiExplainError && (
+            <div className="p-3 bg-error-container text-on-error-container rounded-xl flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-base">error</span>
+                <span>{aiExplainError}</span>
               </div>
-              <p>{aiExplanation}</p>
+              <button
+                type="button"
+                onClick={handleExplainWithAi}
+                className="underline font-bold hover:opacity-80 shrink-0 cursor-pointer"
+              >
+                {language === 'hi' ? 'पुनः प्रयास करें' : 'Retry'}
+              </button>
             </div>
           )}
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
             <button
-              onClick={() => onProceedToCalculator(primaryScheme)}
+              onClick={() => selectSchemeAndNavigateToCalculator(primaryScheme, primaryScheme.maxLoanAmount)}
               className="flex-1 bg-primary text-on-primary font-body font-bold text-sm rounded-xl py-3 px-4 hover:bg-primary-container active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer min-h-[48px]"
             >
               <span>{t.proceedWith} {language === 'hi' ? primaryScheme.nameHi : primaryScheme.nameEn}</span>
@@ -422,7 +438,7 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
           </div>
 
           <button
-            onClick={() => onProceedToChecklist(primaryScheme)}
+            onClick={() => selectSchemeAndNavigateToChecklist(primaryScheme)}
             className="w-full text-center font-body font-bold text-xs text-primary hover:underline pt-1 cursor-pointer"
           >
             📋 View Required Documents for this Scheme →
@@ -464,7 +480,7 @@ export const RecommenderScreen: React.FC<RecommenderScreenProps> = ({
                 </div>
 
                 <button
-                  onClick={() => onProceedToCalculator(scheme)}
+                  onClick={() => selectSchemeAndNavigateToCalculator(scheme, scheme.maxLoanAmount)}
                   className="w-full py-2 bg-surface-container-high hover:bg-primary hover:text-on-primary text-primary font-body font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <span>Calculate EMI</span>

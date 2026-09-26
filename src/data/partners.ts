@@ -1,180 +1,307 @@
 import { Partner } from '../types';
 
+export const PARTNERS_METADATA = {
+  purpose: 'Verified replacement data for src/data/partners.ts CHANNEL_PARTNERS in the Nidhi Sahayak app',
+  source_name: 'Ministry of Social Justice & Empowerment (MoSJE) — List of Channelizing Agencies',
+  source_url: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  fetched_on: '2026-09-24',
+  coverage_note:
+    "This is the MoSJE-published list of State Channelizing Agencies (SCAs), Regional Rural Banks (RRBs), and select Nationalised Banks. It is NOT confirmed to be NSFDC-specific — it appears under the NSKFDC section of the portal but lists agencies used broadly across SC/ST/OBC welfare corporations. Verify against NSFDC's own published SCA list (nsfdc.nic.in) before presenting this as NSFDC-specific if that matters for your demo.",
+  known_source_issues: [
+    "UP SCFDC entry's address pincode is printed as 266006 in the source page; Mahanagar, Lucknow's actual PIN is 226006. Likely a typo on the government page itself, not corrected here — verify before use.",
+    'No Telangana-specific SCA was listed on this page; only an RRB entry is available for Hyderabad.',
+    'Phone numbers and emails are head-office contacts, not branch-level. Some government contact numbers go stale — recommend a spot-check call/email before a live demo if possible.',
+    'No coordinates included. Do not fabricate lat/lng — geocode these addresses yourself if you need map pins.',
+  ],
+};
+
+export const VERIFIED_CITIES = [
+  'Delhi',
+  'Bhopal',
+  'Mumbai',
+  'Lucknow',
+  'Bengaluru',
+  'Kolkata',
+  'Jaipur',
+  'Patna',
+  'Hyderabad',
+];
+
+export const SAMPLE_CITIES = VERIFIED_CITIES;
+
 export const CHANNEL_PARTNERS: Partner[] = [
   {
-    id: 'partner-1',
-    nameEn: 'State Bank of India (Main Branch)',
-    nameHi: 'भारतीय स्टेट बैंक (मुख्य शाखा)',
-    type: 'PSB',
-    typeNameEn: 'Public Sector Bank',
-    typeNameHi: 'सार्वजनिक क्षेत्र का बैंक',
-    addressEn: '14, Sansad Marg, Connaught Place, New Delhi - 110001',
-    addressHi: '14, संसद मार्ग, कनॉट प्लेस, नई दिल्ली - 110001',
-    city: 'Delhi',
+    id: 'delhi-sca',
+    agencyName: 'Delhi SC, ST, OBC, Minorities, Physical Handicapped Financial and Development Corporation (DSFDC)',
+    agencyType: 'SCA',
     state: 'Delhi',
-    distanceKm: 1.2,
-    loadStatus: 'low',
-    loadLabelEn: 'Recommended: Fast Processing (Load: Low)',
-    loadLabelHi: 'अनुशंसित: तेज़ प्रोसेसिंग (भार: कम)',
-    fundUtilizationRate: 42,
-    phone: '+91-11-2337-4100',
-    email: 'agm.sbi.delhi@sbi.co.in',
-    timings: '10:00 AM - 4:00 PM (Mon-Sat)',
-    coordinates: { x: 38, y: 32, lat: 28.6289, lng: 77.2155 },
-    recommended: true,
-  },
-  {
-    id: 'partner-2',
-    nameEn: 'Delhi SC/ST Financial & Dev. Corp (DSFDC)',
-    nameHi: 'दिल्ली अनुसूचित जाति/जनजाति वित्त एवं विकास निगम',
-    type: 'SCA',
-    typeNameEn: 'State Channelizing Agency',
-    typeNameHi: 'राज्य चैनेलाइजिंग एजेंसी (SCA)',
-    addressEn: 'Ambedkar Bhawan, Sector 16, Rohini, New Delhi - 110089',
-    addressHi: 'अंबेडकर भवन, सेक्टर 16, रोहिणी, नई दिल्ली - 110089',
     city: 'Delhi',
-    state: 'Delhi',
-    distanceKm: 3.5,
-    loadStatus: 'medium',
-    loadLabelEn: 'High Wait Times (Load: Medium)',
-    loadLabelHi: 'मध्यम प्रतीक्षा समय (भार: मध्यम)',
-    fundUtilizationRate: 78,
-    phone: '+91-11-2757-1901',
-    email: 'md.dsfdc@delhi.gov.in',
-    timings: '9:30 AM - 5:30 PM (Mon-Fri)',
-    coordinates: { x: 55, y: 48, lat: 28.7189, lng: 77.1255 },
-    recommended: false,
+    address: 'Ambedkar Bhawan, Institutional Area, Sector 16, Rohini - 110085',
+    phone: ['011-27574377', '011-27574321'],
+    fax: '011-27572706',
+    email: ['dsfdcplanning@gmail.com', 'dsfdcdelhi@gmail.com', 'scstdepartment@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
   },
   {
-    id: 'partner-3',
-    nameEn: 'Sarva Haryana Gramin Bank',
-    nameHi: 'सर्व हरियाणा ग्रामीण बैंक',
-    type: 'RRB',
-    typeNameEn: 'Regional Rural Bank (RRB)',
-    typeNameHi: 'क्षेत्रीय ग्रामीण बैंक (RRB)',
-    addressEn: 'Main Road, Najafgarh, New Delhi - 110043',
-    addressHi: 'मुख्य मार्ग, नजफगढ़, नई दिल्ली - 110043',
+    id: 'delhi-nationalised-bank',
+    agencyName: 'Indian Overseas Bank — Preet Vihar Branch',
+    agencyType: 'Nationalised Bank',
+    state: 'Delhi',
     city: 'Delhi',
-    state: 'Delhi',
-    distanceKm: 4.1,
-    loadStatus: 'full',
-    loadLabelEn: 'Not Accepting Apps (Load: Full)',
-    loadLabelHi: 'वर्तमान में नए आवेदन बंद (भार: पूर्ण)',
-    fundUtilizationRate: 98,
-    phone: '+91-11-2801-4432',
-    email: 'branch.najafgarh@shgb.co.in',
-    timings: '10:00 AM - 3:30 PM (Mon-Sat)',
-    coordinates: { x: 74, y: 58, lat: 28.6128, lng: 76.9855 },
-    recommended: false,
+    address: 'A-172, Preet Vihar, Delhi - 110092',
+    phone: ['011-22524928', '011-22043882', '011-22521207'],
+    fax: '011-22043882',
+    email: ['preetbr@delsco.iobnet.co.in', 'iob1305@iob.in'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
   },
   {
-    id: 'partner-4',
-    nameEn: 'Punjab National Bank (Zonal Office)',
-    nameHi: 'पंजाब नेशनल बैंक (जोनल कार्यालय)',
-    type: 'PSB',
-    typeNameEn: 'Public Sector Bank',
-    typeNameHi: 'सार्वजनिक क्षेत्र का बैंक',
-    addressEn: 'Sector 10, Dwarka, New Delhi - 110075',
-    addressHi: 'सेक्टर 10, द्वारका, नई दिल्ली - 110075',
-    city: 'Delhi',
-    state: 'Delhi',
-    distanceKm: 2.4,
-    loadStatus: 'low',
-    loadLabelEn: 'Recommended: Fast Processing (Load: Low)',
-    loadLabelHi: 'अनुशंसित: तेज़ प्रोसेसिंग (भार: कम)',
-    fundUtilizationRate: 35,
-    phone: '+91-11-2808-1122',
-    email: 'pnb.dwarka@pnb.co.in',
-    timings: '10:00 AM - 4:00 PM (Mon-Sat)',
-    coordinates: { x: 28, y: 52, lat: 28.5828, lng: 77.0555 },
-    recommended: true,
-  },
-  {
-    id: 'partner-5',
-    nameEn: 'Satin Creditcare Network (NBFC-MFI Hub)',
-    nameHi: 'सैटिन क्रेडिटकेयर नेटवर्क (NBFC-MFI)',
-    type: 'NBFC-MFI',
-    typeNameEn: 'NBFC-Micro Finance Institution',
-    typeNameHi: 'एनबीएफसी-माइक्रो फाइनेंस संस्थान',
-    addressEn: 'Plot 492, Udyog Vihar Phase 3, Gurugram - 122016',
-    addressHi: 'प्लॉट 492, उद्योग विहार फेज 3, गुरुग्राम - 122016',
-    city: 'NCR',
-    state: 'Haryana',
-    distanceKm: 5.8,
-    loadStatus: 'low',
-    loadLabelEn: 'Recommended: Fast Processing (Load: Low)',
-    loadLabelHi: 'अनुशंसित: तेज़ प्रोसेसिंग (भार: कम)',
-    fundUtilizationRate: 48,
-    phone: '+91-124-471-5400',
-    email: 'nsfdc.nodal@satincreditcare.com',
-    timings: '9:30 AM - 6:00 PM (Mon-Fri)',
-    coordinates: { x: 62, y: 72, lat: 28.5028, lng: 77.0855 },
-    recommended: true,
-  },
-  {
-    id: 'partner-6',
-    nameEn: 'MP State SC Development Corporation',
-    nameHi: 'म.प्र. राज्य अनुसूचित जाति विकास निगम',
-    type: 'SCA',
-    typeNameEn: 'State Channelizing Agency',
-    typeNameHi: 'राज्य चैनेलाइजिंग एजेंसी (SCA)',
-    addressEn: 'Rajiv Gandhi Bhawan, 35 Shyamla Hills, Bhopal - 462002',
-    addressHi: 'राजीव गांधी भवन, 35 श्यामला हिल्स, भोपाल - 462002',
-    city: 'Bhopal',
+    id: 'bhopal-sca',
+    agencyName: 'Madhya Pradesh State Cooperative SC Development Corporation',
+    agencyType: 'SCA',
     state: 'Madhya Pradesh',
-    distanceKm: 3.8,
-    loadStatus: 'low',
-    loadLabelEn: 'Recommended: Fast Processing (Load: Low)',
-    loadLabelHi: 'अनुशंसित: तेज़ प्रोसेसिंग (भार: कम)',
-    fundUtilizationRate: 51,
-    phone: '+91-755-266-1890',
-    email: 'md.mpscdc@mp.gov.in',
-    timings: '10:00 AM - 5:00 PM (Mon-Fri)',
-    coordinates: { x: 44, y: 40, lat: 23.2599, lng: 77.4126 },
-    recommended: true,
+    city: 'Bhopal',
+    address: 'Rajiv Gandhi Bhawan, 35 Shyamala Hills, Bhopal - 462002',
+    phone: ['0755-2661744', '0755-2661844'],
+    fax: '0755-2661612',
+    email: ['mpscfdc@gmail.com', 'mpscfdc@mp.gov.in'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
   },
   {
-    id: 'partner-7',
-    nameEn: 'Bank of Baroda (SC Welfare Cell)',
-    nameHi: 'बैंक ऑफ बड़ौदा (एससी कल्याण प्रकोष्ठ)',
-    type: 'PSB',
-    typeNameEn: 'Public Sector Bank',
-    typeNameHi: 'सार्वजनिक क्षेत्र का बैंक',
-    addressEn: 'Hazratganj Main Branch, Lucknow - 226001',
-    addressHi: 'हजरतगंज मुख्य शाखा, लखनऊ - 226001',
-    city: 'Lucknow',
-    state: 'Uttar Pradesh',
-    distanceKm: 2.1,
-    loadStatus: 'medium',
-    loadLabelEn: 'High Wait Times (Load: Medium)',
-    loadLabelHi: 'मध्यम प्रतीक्षा समय (भार: मध्यम)',
-    fundUtilizationRate: 73,
-    phone: '+91-522-262-4411',
-    email: 'zonal.lucknow@bankofbaroda.co.in',
-    timings: '10:00 AM - 4:00 PM (Mon-Sat)',
-    coordinates: { x: 68, y: 35, lat: 26.8467, lng: 80.9462 },
-    recommended: false,
+    id: 'mp-rrb',
+    agencyName: 'Madhya Pradesh Gramin Bank (sponsored by State Bank of India)',
+    agencyType: 'RRB',
+    state: 'Madhya Pradesh',
+    city: 'Indore',
+    address: 'C21 Business Park, MR-10, Indore - 452010',
+    phone: ['0731-2445333'],
+    email: ['ho.indore@mpgb-rrb.com'],
+    website: 'https://www.mgbank.co.in/',
+    note: 'Head office is in Indore, not Bhopal — this is the state-level RRB, not a Bhopal branch specifically.',
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
   },
   {
-    id: 'partner-8',
-    nameEn: 'Aryavart Bank (Regional Office)',
-    nameHi: 'आर्यावर्त बैंक (क्षेत्रीय कार्यालय)',
-    type: 'RRB',
-    typeNameEn: 'Regional Rural Bank (RRB)',
-    typeNameHi: 'क्षेत्रीय ग्रामीण बैंक (RRB)',
-    addressEn: 'A-2/46, Gomti Nagar, Lucknow - 226010',
-    addressHi: 'ए-2/46, गोमती नगर, लखनऊ - 226010',
-    city: 'Lucknow',
+    id: 'mumbai-sca',
+    agencyName: 'Mahatma Phule Backward Class Development Corporation Ltd.',
+    agencyType: 'SCA',
+    state: 'Maharashtra',
+    city: 'Mumbai',
+    address: 'N-1, Juhu Supreme Shopping Centre, Gulmohar Cross Road No. 9, J.V.P.D. Scheme, Juhu, Mumbai - 400049',
+    phone: ['022-26200351', '022-26202852'],
+    fax: '022-26705173',
+    email: ['md.mpbcdc@gmail.com', 'mahatma.phule@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'mumbai-nationalised-bank',
+    agencyName: 'Central Bank of India — Head Office',
+    agencyType: 'Nationalised Bank',
+    state: 'Maharashtra',
+    city: 'Mumbai',
+    address: 'Chander Mukhi, Nariman Point, Mumbai - 400021',
+    phone: ['022-66387777'],
+    email: ['info@centralbankofindia.co.in', 'dgmgbdelhi@centralbank.co.in'],
+    website: 'https://www.centralbank.bank.in/en',
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'lucknow-sca',
+    agencyName: 'U.P. Scheduled Castes Finance & Development Corporation',
+    agencyType: 'SCA',
     state: 'Uttar Pradesh',
-    distanceKm: 6.4,
-    loadStatus: 'low',
-    loadLabelEn: 'Recommended: Fast Processing (Load: Low)',
-    loadLabelHi: 'अनुशंसित: तेज़ प्रोसेसिंग (भार: कम)',
-    fundUtilizationRate: 39,
-    phone: '+91-522-230-0500',
-    email: 'microcredit@aryavart-rrb.com',
-    timings: '10:00 AM - 4:00 PM (Mon-Sat)',
-    coordinates: { x: 50, y: 64, lat: 26.8567, lng: 80.9962 },
-    recommended: true,
+    city: 'Lucknow',
+    address: 'B-912, Sector C, Mahanagar, Lucknow - 226006 (source page prints 266006, likely a typo — verify before use)',
+    phone: ['0522-2322085', '0522-2335347'],
+    fax: '0522-2334689',
+    email: ['md.hqupscfdc@gmail.com', 'gm.hq.upsfdc@gmail.com', 'monitor.hq.upsfdc@gmail.com'],
+    note: "Official source page prints pincode as 266006; Mahanagar, Lucknow's actual PIN is 226006. Likely a government typo — verify before visiting.",
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'bengaluru-sca',
+    agencyName: 'Karnataka State Safai Karmachari Development Corporation (KSSKDC)',
+    agencyType: 'SCA',
+    state: 'Karnataka',
+    city: 'Bengaluru',
+    address: 'Saira Bagh No. 19/4, 3rd Floor, Cunningham Road, Bengaluru - 560052',
+    phone: ['080-22212202', '080-22868870', '080-22867097'],
+    fax: '080-22860396',
+    email: ['ksskdc3@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'bengaluru-nationalised-bank',
+    agencyName: 'Canara Bank — Head Office (Priority Credit Wing)',
+    agencyType: 'Nationalised Bank',
+    state: 'Karnataka',
+    city: 'Bengaluru',
+    address: '112, J.C. Road, Bangalore - 560002',
+    phone: ['080-22110557'],
+    email: ['hopcs@canarabank.com', 'pcccodel@canarabank.com'],
+    website: 'https://www.canarabank.com',
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'kolkata-sca',
+    agencyName: 'West Bengal Scheduled Castes and Scheduled Tribes Development and Finance Corporation',
+    agencyType: 'SCA',
+    state: 'West Bengal',
+    city: 'Kolkata',
+    address: 'CF-217/A/1, Sector-I, Salt Lake, Kolkata - 700064',
+    phone: ['033-40261500', '033-40261505', '033-40261506', '033-40261509'],
+    fax: '033-40051233',
+    email: ['wbscstdfc@gmail.com', 'md.scstdfc@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'jaipur-sca',
+    agencyName: 'Rajasthan SC & ST Finance & Development Cooperative Corporation Ltd.',
+    agencyType: 'SCA',
+    state: 'Rajasthan',
+    city: 'Jaipur',
+    address: 'Nehru Sahkar Bhawan, Central Block, 3rd Floor, Bhawani Singh Road, Jaipur - 302005',
+    phone: ['0141-2740833', '0141-2740544', '0141-2740745', '0141-2741328'],
+    fax: '0141-2740880',
+    email: ['gmscdcho@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'patna-sca',
+    agencyName: 'Bihar State Scheduled Castes Cooperative Development Corporation Ltd.',
+    agencyType: 'SCA',
+    state: 'Bihar',
+    city: 'Patna',
+    address: 'Officers Flat 35/84, 2nd Floor, New Punaichak, Patna - 800023',
+    phone: ['0612-2525612'],
+    email: ['bssccdc@yahoo.com', 'directorscst@gmail.com'],
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
+  },
+  {
+    id: 'hyderabad-rrb',
+    agencyName: 'Telangana Grameena Bank (sponsored by State Bank of India)',
+    agencyType: 'RRB',
+    state: 'Telangana',
+    city: 'Hyderabad',
+    address: 'Nallakunta, Hyderabad - 500044',
+    phone: ['040-23232107'],
+    fax: '040-27662623',
+    email: ['tgbho@tgbhyd.in'],
+    note: 'No SCA was listed for Telangana on the official portal — this RRB is the only verified entry available for Hyderabad.',
+    corporationsCovered: 'unconfirmed',
+    dataSource: 'verified',
+    sourceReference: 'https://devmosje.negd.in/organisation/list-of-channelizing-agencies/',
   },
 ];
+
+export interface LocationPartnersResult {
+  partners: Partner[];
+  isLocationSet: boolean;
+  matchedCity: string | null;
+  hasVerifiedData: boolean;
+  searchedCity?: string;
+}
+
+/**
+ * Resolves verified partners for a given city/location string.
+ * Strictly does NOT invent or fabricate entries for other cities.
+ * If location is empty, returns all verified entries for user browsing.
+ * If city is not found among verified cities, returns empty list with hasVerifiedData=false.
+ */
+export function getSamplePartnersForLocation(userCity?: string | null): LocationPartnersResult {
+  const raw = (userCity || '').trim();
+
+  // If location is unset or empty: return all 13 verified partners
+  if (!raw) {
+    return {
+      partners: CHANNEL_PARTNERS,
+      isLocationSet: false,
+      matchedCity: null,
+      hasVerifiedData: true,
+    };
+  }
+
+  const lower = raw.toLowerCase();
+  let matchedCityName: string | null = null;
+
+  if (lower.includes('delhi') || lower.includes('ncr') || lower.includes('दिल्ली')) {
+    matchedCityName = 'Delhi';
+  } else if (
+    lower.includes('bhopal') ||
+    lower.includes('भोपाल') ||
+    lower.includes('madhya pradesh') ||
+    lower.includes('mp') ||
+    lower.includes('indore') ||
+    lower.includes('इंदौर')
+  ) {
+    matchedCityName = 'Bhopal';
+  } else if (lower.includes('mumbai') || lower.includes('bombay') || lower.includes('मुंबई') || lower.includes('maharashtra')) {
+    matchedCityName = 'Mumbai';
+  } else if (lower.includes('lucknow') || lower.includes('लखनऊ') || lower.includes('uttar pradesh') || lower.includes('up')) {
+    matchedCityName = 'Lucknow';
+  } else if (lower.includes('bengaluru') || lower.includes('bangalore') || lower.includes('बेंगलुरु') || lower.includes('karnataka')) {
+    matchedCityName = 'Bengaluru';
+  } else if (lower.includes('jaipur') || lower.includes('जयपुर') || lower.includes('rajasthan')) {
+    matchedCityName = 'Jaipur';
+  } else if (lower.includes('patna') || lower.includes('पटना') || lower.includes('bihar')) {
+    matchedCityName = 'Patna';
+  } else if (lower.includes('kolkata') || lower.includes('calcutta') || lower.includes('कोलकाता') || lower.includes('west bengal')) {
+    matchedCityName = 'Kolkata';
+  } else if (
+    lower.includes('hyderabad') ||
+    lower.includes('हैदराबाद') ||
+    lower.includes('telangana') ||
+    lower.includes('secunderabad')
+  ) {
+    matchedCityName = 'Hyderabad';
+  }
+
+  if (matchedCityName) {
+    let cityPartners = CHANNEL_PARTNERS.filter((p) => p.city.toLowerCase() === matchedCityName!.toLowerCase());
+    // For Bhopal, include MP Gramin Bank (state-level RRB based in Indore)
+    if (matchedCityName === 'Bhopal') {
+      const mpRrb = CHANNEL_PARTNERS.find((p) => p.id === 'mp-rrb');
+      if (mpRrb && !cityPartners.some((p) => p.id === 'mp-rrb')) {
+        cityPartners = [...cityPartners, mpRrb];
+      }
+    }
+    return {
+      partners: cityPartners,
+      isLocationSet: true,
+      matchedCity: matchedCityName,
+      hasVerifiedData: cityPartners.length > 0,
+      searchedCity: raw,
+    };
+  }
+
+  // Not matched to any verified city: DO NOT fabricate entries!
+  return {
+    partners: [],
+    isLocationSet: true,
+    matchedCity: null,
+    hasVerifiedData: false,
+    searchedCity: raw,
+  };
+}

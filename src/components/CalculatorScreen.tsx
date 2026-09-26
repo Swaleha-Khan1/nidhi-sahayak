@@ -1,49 +1,60 @@
-import React, { useState, useEffect } from 'react';
-import { Language, SchemeRecommendation } from '../types';
+import React, { useState } from 'react';
+import { SchemeRecommendation } from '../types';
 import { translations } from '../data/translations';
 import { calculateEmi, formatFullIndianCurrency, formatIndianCurrency } from '../data/schemes';
+import { useApp } from '../context/AppContext';
 
 interface CalculatorScreenProps {
-  language: Language;
+  language?: 'en' | 'hi';
   preselectedScheme?: SchemeRecommendation | null;
-  onProceedToChecklist: (schemeId?: string) => void;
+  onProceedToChecklist?: (schemeId?: string) => void;
 }
 
-export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
-  language,
-  preselectedScheme,
-  onProceedToChecklist,
-}) => {
+export const CalculatorScreen: React.FC<CalculatorScreenProps> = () => {
+  const {
+    language,
+    calculatorState,
+    updateCalculatorState,
+    selectedScheme,
+    userProfile,
+    setActiveTab,
+    selectSchemeAndNavigateToChecklist,
+  } = useApp();
+
   const t = translations[language];
 
-  // State initialized with preselected scheme or standard NSFDC default
-  const [loanAmount, setLoanAmount] = useState<number>(
-    preselectedScheme?.maxLoanAmount ? Math.min(120000, preselectedScheme.maxLoanAmount) : 120000
-  );
-  const [interestRate, setInterestRate] = useState<number>(
-    preselectedScheme?.interestRate || 6.5
-  );
-  const [tenureMonths, setTenureMonths] = useState<number>(
-    preselectedScheme?.repaymentMonths || 36
-  );
-  const [moratoriumMonths, setMoratoriumMonths] = useState<number>(
-    preselectedScheme?.moratoriumMonths || 3
-  );
+  // If selectedScheme is present and calculator is not yet populated for this scheme, sync directly
+  React.useEffect(() => {
+    if (selectedScheme && calculatorState.schemeId !== selectedScheme.id) {
+      const isFemale = userProfile.gender === 'female';
+      const rate = (isFemale && selectedScheme.interestRateWomen)
+        ? selectedScheme.interestRateWomen
+        : selectedScheme.interestRate;
+
+      updateCalculatorState({
+        schemeId: selectedScheme.id,
+        schemeNameEn: selectedScheme.nameEn,
+        schemeNameHi: selectedScheme.nameHi,
+        agency: selectedScheme.agency,
+        agencyShort: selectedScheme.agencyShort,
+        loanAmount: selectedScheme.maxLoanAmount,
+        interestRate: rate,
+        tenureMonths: selectedScheme.repaymentMonths || (selectedScheme.repaymentYears * 12) || 36,
+        moratoriumMonths: selectedScheme.moratoriumMonths || 0,
+        isAutoPopulated: true,
+      });
+    }
+  }, [selectedScheme?.id]);
+
+  const loanAmount = calculatorState.loanAmount;
+  const interestRate = calculatorState.interestRate;
+  const tenureMonths = calculatorState.tenureMonths;
+  const moratoriumMonths = calculatorState.moratoriumMonths;
 
   const [savedToast, setSavedToast] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
 
-  // Update parameters if preselected scheme changes
-  useEffect(() => {
-    if (preselectedScheme) {
-      setLoanAmount(Math.min(preselectedScheme.maxLoanAmount, 120000) || 120000);
-      setInterestRate(preselectedScheme.interestRate);
-      setTenureMonths(preselectedScheme.repaymentMonths);
-      setMoratoriumMonths(preselectedScheme.moratoriumMonths);
-    }
-  }, [preselectedScheme]);
-
-  // Live recalculation using standard formula
+  // Live recalculation using standard financial formula
   const emiResult = calculateEmi(loanAmount, interestRate, tenureMonths, moratoriumMonths);
 
   const handleSaveCalculation = () => {
@@ -51,13 +62,13 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
     setTimeout(() => setSavedToast(false), 3000);
   };
 
-  // Quick NSFDC Presets
+  // Quick Verified Scheme Presets
   const presets = [
     {
       nameEn: 'Micro Finance (≤₹1.4L)',
       nameHi: 'माइक्रो फाइनेंस (≤₹1.4L)',
-      amount: 120000,
-      rate: 6.5,
+      amount: 140000,
+      rate: 5.0,
       tenure: 36,
       moratorium: 3,
     },
@@ -65,7 +76,7 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
       nameEn: 'Term Loan (₹10L)',
       nameHi: 'टर्म लोन (₹10L)',
       amount: 1000000,
-      rate: 8.0,
+      rate: 6.0,
       tenure: 84,
       moratorium: 6,
     },
@@ -73,17 +84,17 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
       nameEn: 'Education India (₹20L)',
       nameHi: 'शिक्षा भारत (₹20L)',
       amount: 2000000,
-      rate: 6.0,
+      rate: 4.0,
       tenure: 120,
       moratorium: 12,
     },
     {
-      nameEn: 'Education Abroad (₹35L)',
-      nameHi: 'शिक्षा विदेश (₹35L)',
-      amount: 3500000,
+      nameEn: 'PM SVANidhi (₹20K)',
+      nameHi: 'पीएम स्वनिधि (₹20K)',
+      amount: 20000,
       rate: 7.0,
-      tenure: 144,
-      moratorium: 12,
+      tenure: 18,
+      moratorium: 1,
     },
   ];
 
@@ -99,6 +110,52 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
         </p>
       </div>
 
+      {/* Linked Scheme Banner - Single Source of Truth from Recommender */}
+      {calculatorState.schemeNameEn && (
+        <div className="bg-primary/10 border-2 border-primary/30 rounded-2xl p-4 flex items-start justify-between gap-3 animate-fade-in shadow-xs">
+          <div className="flex items-start gap-3">
+            <span
+              className="material-symbols-outlined text-primary text-2xl shrink-0 mt-0.5"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              verified
+            </span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-primary text-on-primary">
+                  {calculatorState.agencyShort || 'SCHEME'}
+                </span>
+                <h3 className="font-headline text-base font-bold text-primary">
+                  {language === 'hi' && calculatorState.schemeNameHi
+                    ? calculatorState.schemeNameHi
+                    : calculatorState.schemeNameEn}
+                </h3>
+              </div>
+              <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                {language === 'hi'
+                  ? `चयनित योजना से स्वतः भरा गया: ब्याज दर ${calculatorState.interestRate}% प्रति वर्ष • ऋण राशि ${formatFullIndianCurrency(calculatorState.loanAmount)} • अवधि ${calculatorState.tenureMonths} माह (${Math.round((calculatorState.tenureMonths / 12) * 10) / 10} वर्ष) • अधिस्थगन ${calculatorState.moratoriumMonths} माह`
+                  : `Auto-populated from selected scheme: ${calculatorState.interestRate}% p.a. • Loan Amount ${formatFullIndianCurrency(calculatorState.loanAmount)} • ${calculatorState.tenureMonths} Months tenure (${Math.round((calculatorState.tenureMonths / 12) * 10) / 10} Yrs) • ${calculatorState.moratoriumMonths} Months holiday`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              updateCalculatorState({
+                schemeNameEn: null,
+                schemeNameHi: null,
+                agencyShort: null,
+                isAutoPopulated: false,
+              })
+            }
+            className="text-on-surface-variant hover:text-primary text-xs font-semibold px-2 py-1 rounded-md border border-outline-variant/40 hover:bg-surface-bright transition-all shrink-0 cursor-pointer"
+            title="Clear scheme linkage"
+          >
+            {language === 'hi' ? 'कस्टम मोड' : 'Custom Mode'}
+          </button>
+        </div>
+      )}
+
       {/* Quick Scheme Presets */}
       <div className="flex flex-col gap-2">
         <span className="text-xs font-body font-bold text-on-surface-variant">
@@ -109,18 +166,25 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
             <button
               key={idx}
               onClick={() => {
-                setLoanAmount(p.amount);
-                setInterestRate(p.rate);
-                setTenureMonths(p.tenure);
-                setMoratoriumMonths(p.moratorium);
+                updateCalculatorState({
+                  schemeId: null,
+                  schemeNameEn: p.nameEn,
+                  schemeNameHi: p.nameHi,
+                  agencyShort: 'PRESET',
+                  loanAmount: p.amount,
+                  interestRate: p.rate,
+                  tenureMonths: p.tenure,
+                  moratoriumMonths: p.moratorium,
+                  isAutoPopulated: false,
+                });
               }}
-              className="py-2 px-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest hover:border-primary/40 hover:bg-primary-fixed/30 text-xs font-semibold text-left transition-all active:scale-95 shadow-2xs"
+              className="py-2 px-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest hover:border-primary/40 hover:bg-primary-fixed/30 text-xs font-semibold text-left transition-all active:scale-95 shadow-2xs cursor-pointer"
             >
               <span className="font-bold block text-primary truncate">
                 {language === 'hi' ? p.nameHi : p.nameEn}
               </span>
               <span className="text-[11px] text-on-surface-variant">
-                {p.rate}% • {p.tenure / 12} Yrs
+                {p.rate}% • {p.tenure / 12} Yrs • {formatIndianCurrency(p.amount)}
               </span>
             </button>
           ))}
@@ -148,15 +212,13 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
               max="5000000"
               step="10000"
               value={loanAmount}
-              onChange={(e) => setLoanAmount(parseInt(e.target.value, 10))}
-              className="custom-range-slider my-2"
-              style={{
-                background: `linear-gradient(to right, #000666 0%, #000666 ${(loanAmount / 5000000) * 100}%, #e3e2e1 ${(loanAmount / 5000000) * 100}%, #e3e2e1 100%)`,
-              }}
+              onChange={(e) => updateCalculatorState({ loanAmount: parseInt(e.target.value, 10) })}
+              className="custom-range-slider my-2 w-full h-3 bg-surface-container-high rounded-lg cursor-pointer accent-primary"
             />
             <div className="flex justify-between text-xs text-on-surface-variant font-medium">
               <span>₹10K</span>
               <span>₹1.4L</span>
+              <span>₹10L</span>
               <span>₹50L</span>
             </div>
           </div>
@@ -173,7 +235,7 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
                 min="1"
                 max="25"
                 value={interestRate}
-                onChange={(e) => setInterestRate(parseFloat(e.target.value) || 1)}
+                onChange={(e) => updateCalculatorState({ interestRate: parseFloat(e.target.value) || 1 })}
                 className="w-full min-h-[46px] px-3.5 pr-8 rounded-xl border border-primary/20 bg-surface focus:ring-2 focus:ring-primary/20 text-sm font-bold text-on-surface outline-none"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold">
@@ -197,7 +259,7 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
                 max="180"
                 step="6"
                 value={tenureMonths}
-                onChange={(e) => setTenureMonths(parseInt(e.target.value, 10) || 12)}
+                onChange={(e) => updateCalculatorState({ tenureMonths: parseInt(e.target.value, 10) || 12 })}
                 className="w-full min-h-[46px] px-3.5 pr-14 rounded-xl border border-primary/20 bg-surface focus:ring-2 focus:ring-primary/20 text-sm font-bold text-on-surface outline-none"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-xs font-semibold">
@@ -221,7 +283,7 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
                 max="24"
                 step="1"
                 value={moratoriumMonths}
-                onChange={(e) => setMoratoriumMonths(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => updateCalculatorState({ moratoriumMonths: parseInt(e.target.value, 10) || 0 })}
                 className="w-full min-h-[46px] px-3.5 pr-14 rounded-xl border border-primary/20 bg-surface focus:ring-2 focus:ring-primary/20 text-sm font-bold text-on-surface outline-none"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-xs font-semibold">
@@ -336,7 +398,13 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({
             )}
 
             <button
-              onClick={() => onProceedToChecklist(preselectedScheme?.id)}
+              onClick={() => {
+                if (selectedScheme) {
+                  selectSchemeAndNavigateToChecklist(selectedScheme);
+                } else {
+                  setActiveTab('checklist');
+                }
+              }}
               className="w-full min-h-[46px] bg-surface-container-high hover:bg-primary-fixed text-primary border border-primary/20 rounded-xl font-body font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
               <span>{t.checklistTitle} →</span>

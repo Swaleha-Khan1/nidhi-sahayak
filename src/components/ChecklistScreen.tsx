@@ -1,22 +1,40 @@
 import React, { useState } from 'react';
-import { Language, DocumentItem } from '../types';
+import { DocumentItem } from '../types';
 import { translations } from '../data/translations';
 import { INITIAL_DOCUMENTS } from '../data/documents';
+import { useApp } from '../context/AppContext';
 
 interface ChecklistScreenProps {
-  language: Language;
-  onNavigateToLocator: () => void;
+  language?: 'en' | 'hi';
+  onNavigateToLocator?: () => void;
   initialSchemeCategory?: 'micro' | 'term' | 'education' | 'all';
 }
 
 export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
-  language,
   onNavigateToLocator,
-  initialSchemeCategory = 'all',
+  initialSchemeCategory,
 }) => {
+  const {
+    language,
+    selectedScheme,
+    setActiveTab,
+  } = useApp();
+
   const t = translations[language];
   const [documents, setDocuments] = useState<DocumentItem[]>(INITIAL_DOCUMENTS);
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'micro' | 'term' | 'education'>(initialSchemeCategory);
+
+  // Default filter based on selectedScheme if present
+  const defaultFilter = initialSchemeCategory || (
+    selectedScheme?.category === 'micro'
+      ? 'micro'
+      : selectedScheme?.category === 'term'
+      ? 'term'
+      : selectedScheme?.category === 'education'
+      ? 'education'
+      : 'all'
+  );
+
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'micro' | 'term' | 'education'>(defaultFilter);
   const [downloadToast, setDownloadToast] = useState(false);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
 
@@ -36,10 +54,14 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
   };
 
   const handleDownload = () => {
+    const schemeTitle = selectedScheme
+      ? `${language === 'hi' ? selectedScheme.nameHi : selectedScheme.nameEn} (${selectedScheme.agencyShort})`
+      : 'NATIONAL SCHEME MATCH';
+
     const lines = [
       '==================================================',
-      '        NSFDC LOAN APPLICATION CHECKLIST         ',
-      '    National Scheduled Castes Finance & Dev Corp  ',
+      '        NATIONAL WELFARE LOAN CHECKLIST           ',
+      `    Scheme: ${schemeTitle}`,
       '==================================================',
       '',
       `Date: ${new Date().toLocaleDateString('en-IN')}`,
@@ -64,12 +86,20 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NSFDC_Checklist_${selectedFilter}_${Date.now()}.txt`;
+    link.download = `Loan_Checklist_${selectedFilter}_${Date.now()}.txt`;
     link.click();
     URL.revokeObjectURL(url);
 
     setDownloadToast(true);
     setTimeout(() => setDownloadToast(false), 3000);
+  };
+
+  const handleGoToLocator = () => {
+    if (onNavigateToLocator) {
+      onNavigateToLocator();
+    } else {
+      setActiveTab('locator');
+    }
   };
 
   return (
@@ -84,6 +114,26 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
         </p>
       </div>
 
+      {/* Linked Scheme Banner if selected */}
+      {selectedScheme && (
+        <div className="bg-primary/10 border-2 border-primary/30 rounded-2xl p-4 flex items-center justify-between gap-3 animate-fade-in shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="material-symbols-outlined text-primary text-xl">folder_special</span>
+            <div>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-primary text-on-primary mr-2">
+                {selectedScheme.agencyShort}
+              </span>
+              <span className="font-bold text-sm text-primary">
+                {language === 'hi' ? selectedScheme.nameHi : selectedScheme.nameEn}
+              </span>
+            </div>
+          </div>
+          <span className="text-xs font-semibold text-on-surface-variant hidden sm:inline">
+            Active Selection
+          </span>
+        </div>
+      )}
+
       {/* Scheme Filter Selector */}
       <div className="flex flex-wrap gap-2">
         {[
@@ -94,6 +144,7 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
         ].map((f) => (
           <button
             key={f.id}
+            type="button"
             onClick={() => setSelectedFilter(f.id as any)}
             className={`py-1.5 px-3 rounded-full text-xs font-bold transition-all cursor-pointer ${
               selectedFilter === f.id
@@ -139,68 +190,58 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
               }`}
             >
               <div className="flex items-start justify-between gap-3">
-                <label className="flex items-start gap-3.5 cursor-pointer select-none flex-1">
-                  <input
-                    type="checkbox"
-                    checked={doc.isReady}
-                    onChange={() => toggleDocReady(doc.id)}
-                    className="mt-1 w-5 h-5 rounded-md text-primary focus:ring-primary accent-primary cursor-pointer"
-                  />
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleDocReady(doc.id)}
+                    className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      doc.isReady
+                        ? 'bg-tertiary-container text-on-tertiary'
+                        : 'border-2 border-outline-variant/60 hover:border-primary'
+                    }`}
+                  >
+                    {doc.isReady && (
+                      <span className="material-symbols-outlined text-base">check</span>
+                    )}
+                  </button>
+
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`font-headline text-base font-bold transition-colors ${
-                          doc.isReady ? 'text-primary' : 'text-on-surface'
-                        }`}
-                      >
-                        {language === 'hi' ? doc.titleHi : doc.titleEn}
-                      </span>
-                      {doc.isMandatory && (
-                        <span className="text-[10px] bg-error-container text-on-error-container px-1.5 py-0.5 rounded font-bold">
-                          Mandatory
-                        </span>
-                      )}
-                    </div>
-                    <p className="font-body text-xs text-on-surface-variant mt-0.5">
+                    <h3
+                      className={`font-headline text-base font-bold transition-colors cursor-pointer ${
+                        doc.isReady ? 'line-through text-on-surface-variant/70' : 'text-on-surface'
+                      }`}
+                      onClick={() => toggleDocReady(doc.id)}
+                    >
+                      {language === 'hi' ? doc.titleHi : doc.titleEn}
+                    </h3>
+                    <p className="text-xs text-on-surface-variant mt-0.5">
                       {language === 'hi' ? doc.descHi : doc.descEn}
                     </p>
                   </div>
-                </label>
-
-                {/* Status Badge */}
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span
-                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
-                      doc.isReady
-                        ? 'bg-tertiary-fixed-dim text-on-tertiary-container'
-                        : 'bg-surface-container text-on-surface-variant'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[14px]">
-                      {doc.isReady ? 'check' : 'pending'}
-                    </span>
-                    <span>{doc.isReady ? t.verifiedBadge : t.pendingBadge}</span>
-                  </span>
-
-                  <button
-                    onClick={() => setExpandedDocId(isExpanded ? null : doc.id)}
-                    className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-0.5 mt-1"
-                  >
-                    <span>{isExpanded ? 'Less info' : 'Guidelines'}</span>
-                    <span className="material-symbols-outlined text-[14px]">
-                      {isExpanded ? 'expand_less' : 'expand_more'}
-                    </span>
-                  </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setExpandedDocId(isExpanded ? null : doc.id)}
+                  className="text-on-surface-variant hover:text-primary transition-colors cursor-pointer p-1"
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    {isExpanded ? 'expand_less' : 'info'}
+                  </span>
+                </button>
               </div>
 
-              {/* Expandable Help Guidelines */}
               {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-surface-variant text-xs text-on-surface-variant bg-surface-container-low p-3 rounded-xl flex items-start gap-2 animate-pop-glow">
-                  <span className="material-symbols-outlined text-secondary text-base shrink-0 mt-0.5">
-                    lightbulb
-                  </span>
-                  <span>{language === 'hi' ? doc.helpTipHi : doc.helpTipEn}</span>
+                <div className="mt-3 pt-3 border-t border-surface-variant/60 text-xs text-on-surface-variant space-y-1 bg-surface-container-low/50 p-3 rounded-xl">
+                  <div className="font-bold text-primary flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">lightbulb</span>
+                    <span>Document Tips:</span>
+                  </div>
+                  <p>
+                    {language === 'hi'
+                      ? 'सुनिश्चित करें कि प्रति स्पष्ट और स्व-प्रमाणित हो। स्कैन कॉपी 2MB से कम होनी चाहिए।'
+                      : 'Ensure copies are legible, self-attested, and recent. Original documents must be presented at the verification bank branch.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -208,24 +249,26 @@ export const ChecklistScreen: React.FC<ChecklistScreenProps> = ({
         })}
       </section>
 
-      {/* Action Buttons */}
-      <section className="flex flex-col sm:flex-row gap-3 pt-2">
+      {/* Download and Locator Actions */}
+      <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <button
+          type="button"
           onClick={handleDownload}
-          className="flex-1 bg-surface-container-lowest text-primary border border-primary/30 rounded-xl min-h-[50px] font-body font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary-fixed/40 transition-all shadow-xs cursor-pointer"
+          className="flex-1 bg-primary text-on-primary py-3 px-4 rounded-xl font-body font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary-container active:scale-[0.98] transition-all shadow-xs cursor-pointer min-h-[48px]"
         >
           <span className="material-symbols-outlined text-lg">download</span>
           <span>{t.downloadChecklist}</span>
         </button>
 
         <button
-          onClick={onNavigateToLocator}
-          className="flex-1 bg-primary text-on-primary rounded-xl min-h-[50px] font-body font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary-container active:scale-[0.98] transition-all shadow-xs cursor-pointer"
+          type="button"
+          onClick={handleGoToLocator}
+          className="flex-1 bg-surface-container-high hover:bg-primary-fixed text-primary border border-primary/20 py-3 px-4 rounded-xl font-body font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer min-h-[48px]"
         >
           <span>{t.findPartnerToSubmit}</span>
           <span className="material-symbols-outlined text-lg">arrow_forward</span>
         </button>
-      </section>
+      </div>
 
       {downloadToast && (
         <div className="bg-tertiary-container text-on-tertiary px-4 py-2.5 rounded-xl text-xs font-bold text-center animate-pop-glow">

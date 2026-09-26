@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -31,8 +32,162 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
+// Helper to check for garbage / keyboard smash text
+function detectGarbageInput(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length < 4) return true;
+
+  const lower = trimmed.toLowerCase();
+  
+  // Obvious keyboard smash or random character sequences without meaningful words
+  if (/(asdf|qwer|zxcv|hjkl|jkl;|asdkj|blah blah)/i.test(lower)) {
+    const hasMeaningfulContext = /(loan|ऋण|लोन|education|शिक्षा|business|व्यापार|व्यवसाय|tailor|shop|दुकान|vendor|artisan|lakh|लाख|thousand|हजार|₹|rupees)/i.test(lower);
+    if (!hasMeaningfulContext) return true;
+  }
+
+  // Tokenize and check words
+  const words = lower.split(/[^a-z0-9\u0900-\u097F]+/).filter(w => w.length > 0);
+  if (words.length === 0) return true;
+
+  // Recognized keywords for purpose, category, finance, occupation
+  const recognizedKeywords = [
+    // Category
+    'sc', 'st', 'obc', 'ews', 'general', 'minority', 'pwd', 'divyang', 'disabled', 'handicap',
+    'scheduled', 'caste', 'tribe', 'backward', 'muslim', 'christian', 'sikh', 'jain', 'buddhist', 'parsi',
+    'अनुसूचित', 'जाति', 'जनजाति', 'पिछड़ा', 'अल्पसंख्यक', 'दिव्यांग', 'सामान्य',
+    // Purpose
+    'education', 'study', 'college', 'school', 'university', 'btech', 'mba', 'mbbs', 'degree', 'course', 'fee', 'fees', 'tuition',
+    'business', 'shop', 'store', 'retail', 'tailoring', 'tailor', 'factory', 'enterprise', 'trading', 'manufacturing', 'firm',
+    'agriculture', 'farming', 'dairy', 'poultry', 'cattle', 'fishery', 'goat',
+    'sanitation', 'safai', 'cleaning', 'sewer', 'scavenger',
+    'services', 'transport', 'taxi', 'vehicle', 'auto',
+    'शिक्षा', 'पढ़ाई', 'कॉलेज', 'डिग्री', 'फीस', 'व्यवसाय', 'व्यापार', 'दुकान', 'सिलाई', 'कृषि', 'खेती', 'डेयरी', 'स्वच्छता', 'सफाई',
+    // Cost / Loan / Income
+    'loan', 'credit', 'cost', 'amount', 'need', 'require', 'fund', 'rupee', 'rupees', 'rs', 'inr', 'lakh', 'lakhs', 'lac', 'crore', 'thousand',
+    'income', 'salary', 'earning', 'per', 'annum', 'year', 'monthly',
+    'ऋण', 'लोन', 'लाख', 'रुपये', 'हजार', 'आय', 'वार्षिक', 'आवश्यकता', 'चाहिए',
+    // Occupation / Gender
+    'vendor', 'hawker', 'street', 'thela', 'rehri', 'artisan', 'craft', 'vishwakarma', 'carpenter', 'blacksmith', 'potter', 'weaver', 'handloom',
+    'woman', 'female', 'girl', 'lady', 'widow', 'mother', 'sister', 'male', 'man',
+    'महिला', 'लड़की', 'कारीगर', 'शिल्पकार', 'विश्वकर्मा', 'बुनकर', 'विक्रेता'
+  ];
+
+  const matchedKeywords = words.filter(w => recognizedKeywords.includes(w));
+  if (matchedKeywords.length === 0) {
+    return true;
+  }
+
+  return false;
+}
+
+// Strict heuristic extractor without any hardcoded fallbacks or assumptions
+function extractHeuristicParameters(userText: string) {
+  const lower = userText.toLowerCase();
+
+  // 1. Strict Category Detection - NO DEFAULT TO SC
+  let detectedCategory: string | null = null;
+  if (/\b(sc|scheduled caste|अनुसूचित जाति)\b/i.test(userText)) {
+    detectedCategory = 'sc';
+  } else if (/\b(st|scheduled tribe|जनजाति|आदिवासी)\b/i.test(userText)) {
+    detectedCategory = 'st';
+  } else if (/\b(obc|backward class|पिछड़ा वर्ग|पिछड़ा)\b/i.test(userText)) {
+    detectedCategory = 'obc';
+  } else if (/\b(minority|muslim|christian|sikh|buddhist|jain|parsi|अल्पसंख्यक)\b/i.test(userText)) {
+    detectedCategory = 'minority';
+  } else if (/\b(pwd|disabled|disability|handicap|divyang|दिव्यांग)\b/i.test(userText)) {
+    detectedCategory = 'pwd';
+  } else if (/\b(ews|economically weaker)\b/i.test(userText)) {
+    detectedCategory = 'ews';
+  } else if (/\b(general|सामान्य)\b/i.test(userText)) {
+    detectedCategory = 'general';
+  }
+
+  // 2. Strict Purpose Detection - NO DEFAULT TO BUSINESS
+  let detectedPurpose: string | null = null;
+  const isEdu = /(education|college|study|degree|btech|b\.tech|mba|mbbs|course|fee|fees|tuition|school|university|शिक्षा|पढ़ाई)/i.test(lower);
+  const isAgri = /(agri|farm|farming|dairy|cattle|poultry|goat|crop|कृषि|खेती|डेयरी|पशुपालन)/i.test(lower);
+  const isSanitation = /(sanitation|safai|scavenger|sewer|स्वच्छता|सफाई कर्मचारी)/i.test(lower);
+  const isServices = /(transport|passenger|taxi|driver|auto|service center|परिवहन|सेवा)/i.test(lower);
+  const isBusiness = /(business|shop|store|tailor|tailoring|retail|enterprise|cart|vendor|artisan|craft|weaver|व्यापार|दुकान|व्यवसाय|सिलाई)/i.test(lower);
+
+  if (isEdu) detectedPurpose = 'education';
+  else if (isAgri) detectedPurpose = 'agriculture';
+  else if (isSanitation) detectedPurpose = 'sanitation';
+  else if (isServices) detectedPurpose = 'services';
+  else if (isBusiness) detectedPurpose = 'business';
+
+  // 3. Strict Cost Detection - NO DEFAULT TO 120000
+  let detectedCost: number | null = null;
+  const lakhMatch = userText.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|lakhs|l|लाख)/i);
+  if (lakhMatch) {
+    detectedCost = Math.round(parseFloat(lakhMatch[1]) * 100000);
+  } else {
+    const thousandMatch = userText.match(/(\d+(?:\.\d+)?)\s*(?:thousand|k|हजार)/i);
+    if (thousandMatch) {
+      detectedCost = Math.round(parseFloat(thousandMatch[1]) * 1000);
+    } else {
+      const rupeeMatch = userText.match(/(?:₹|rs\.?|inr)\s*(\d{4,8})/i);
+      if (rupeeMatch) {
+        detectedCost = parseInt(rupeeMatch[1], 10);
+      }
+    }
+  }
+
+  // 4. Strict Income Detection - NO DEFAULT TO 200000
+  let detectedIncome: number | null = null;
+  const incomeLakhMatch = userText.match(/income\s*(?:is|of|:)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:lakh|lac|lakhs|l)/i) ||
+                          userText.match(/आय\s*(?:है|:)?\s*(?:₹|रु\.?)?\s*(\d+(?:\.\d+)?)\s*(?:लाख)/i);
+  if (incomeLakhMatch) {
+    detectedIncome = Math.round(parseFloat(incomeLakhMatch[1]) * 100000);
+  } else {
+    const incomeRupeeMatch = userText.match(/(?:annual|family)?\s*income\s*(?:is|of|:)?\s*(?:₹|rs\.?|inr)\s*(\d{4,8})/i);
+    if (incomeRupeeMatch) {
+      detectedIncome = parseInt(incomeRupeeMatch[1], 10);
+    }
+  }
+
+  // Special occupation
+  let detectedOccupation: string = 'none';
+  if (/(vendor|hawker|street|रेहड़ी|ठेला|फेरी)/i.test(lower)) detectedOccupation = 'street_vendor';
+  else if (/(artisan|craft|vishwakarma|carpenter|blacksmith|कारीगर|शिल्पकार|विश्वकर्मा)/i.test(lower)) detectedOccupation = 'artisan';
+  else if (/(sanitation|safai|scavenger|सफाई)/i.test(lower)) detectedOccupation = 'safai_karamchari';
+  else if (/(weaver|handloom|textile|बुनकर|हथकरघा)/i.test(lower)) detectedOccupation = 'weaver';
+
+  const isFemale = /(woman|female|girl|lady|महिला|लड़की|बहन|सिलाई)/i.test(lower);
+  const isAbroad = /(abroad|foreign|usa|uk|canada|विदेश)/i.test(lower);
+  const isPwd = detectedCategory === 'pwd' || /(pwd|divyang|disab|दिव्यांग)/i.test(lower);
+
+  let detectedCity: string | null = null;
+  const cityMatch = userText.match(/\b(delhi|new delhi|mumbai|bhopal|lucknow|bengaluru|bangalore|kolkata|jaipur|patna|hyderabad|pune|इंदौर|भोपाल|दिल्ली|लखनऊ|मुंबई|जयपुर|पटना)\b/i);
+  if (cityMatch) {
+    const raw = cityMatch[1].toLowerCase();
+    if (raw.includes('delhi') || raw.includes('दिल्ली')) detectedCity = 'Delhi';
+    else if (raw.includes('mumbai') || raw.includes('मुंबई')) detectedCity = 'Mumbai';
+    else if (raw.includes('bhopal') || raw.includes('भोपाल')) detectedCity = 'Bhopal';
+    else if (raw.includes('lucknow') || raw.includes('लखनऊ')) detectedCity = 'Lucknow';
+    else if (raw.includes('bengaluru') || raw.includes('bangalore')) detectedCity = 'Bengaluru';
+    else if (raw.includes('kolkata')) detectedCity = 'Kolkata';
+    else if (raw.includes('jaipur') || raw.includes('जयपुर')) detectedCity = 'Jaipur';
+    else if (raw.includes('patna') || raw.includes('पटना')) detectedCity = 'Patna';
+    else if (raw.includes('hyderabad')) detectedCity = 'Hyderabad';
+    else detectedCity = cityMatch[1].charAt(0).toUpperCase() + cityMatch[1].slice(1);
+  }
+
+  return {
+    detectedCategory,
+    detectedPurpose,
+    detectedCost,
+    detectedIncome,
+    detectedOccupation,
+    detectedCity,
+    isFemale,
+    isAbroad,
+    isPwd,
+  };
+}
+
 // API Route: Parse free-text user description into structured profile parameters
-// Note: AI only parses text into variables. Strict rule logic decides eligibility.
+// Strictly extracts only explicitly stated fields with no defaults/fallbacks
 app.post('/api/ai/parse-situation', async (req, res) => {
   try {
     const { userText, language = 'en' } = req.body;
@@ -40,92 +195,108 @@ app.post('/api/ai/parse-situation', async (req, res) => {
       return res.status(400).json({ error: 'Text prompt is required' });
     }
 
-    const ai = getGeminiClient();
-    if (!ai) {
-      // Fallback heuristics if API key is not yet configured
-      const lower = userText.toLowerCase();
-      let cost = 120000;
-      let income = 200000;
-
-      // Extract income if explicitly mentioned
-      const incomeMatch = userText.match(/income\s*(?:is|of|:)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:lakh|lac|lakhs|l)/i) ||
-                          userText.match(/आय\s*(?:है|:)?\s*(?:₹|रु\.?)?\s*(\d+(?:\.\d+)?)\s*(?:लाख)/i);
-      if (incomeMatch) {
-        income = Math.round(parseFloat(incomeMatch[1]) * 100000);
-      }
-
-      // Extract project cost / loan amount / course fee
-      const costMatch = userText.match(/(?:cost|loan|need|require|amount|fee|fees|रुपये|लाख)\s*(?:of|is|:)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:lakh|lac|lakhs|l)/i) ||
-                        userText.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|lakhs|l)/i);
-      if (costMatch) {
-        cost = Math.round(parseFloat(costMatch[1]) * 100000);
-      } else {
-        const rawNum = userText.match(/₹?\s*(\d{4,8})/);
-        if (rawNum) cost = parseInt(rawNum[1], 10);
-      }
-
-      const isEdu = lower.includes('education') || lower.includes('college') || lower.includes('study') || lower.includes('degree') || lower.includes('btech') || lower.includes('b.tech') || lower.includes('mba') || lower.includes('mbbs') || lower.includes('course') || lower.includes('fee') || lower.includes('शिक्षा') || lower.includes('पढ़ाई');
-      const isAbroad = lower.includes('abroad') || lower.includes('foreign') || lower.includes('usa') || lower.includes('uk') || lower.includes('canada') || lower.includes('विदेश');
-      const isFemale = lower.includes('woman') || lower.includes('female') || lower.includes('girl') || lower.includes('lady') || lower.includes('महिला') || lower.includes('लड़की') || lower.includes('बहन') || lower.includes('सिलाई');
-      
-      // Category detection
-      let detectedCategory = 'sc';
-      if (lower.includes('st ') || lower.includes('tribal') || lower.includes('scheduled tribe') || lower.includes('जनजाति') || lower.includes('आदिवासी')) {
-        detectedCategory = 'st';
-      } else if (lower.includes('obc') || lower.includes('backward class') || lower.includes('पिछड़ा वर्ग')) {
-        detectedCategory = 'obc';
-      } else if (lower.includes('ews') || lower.includes('economically weaker')) {
-        detectedCategory = 'ews';
-      } else if (lower.includes('minority') || lower.includes('muslim') || lower.includes('christian') || lower.includes('sikh') || lower.includes('buddhist') || lower.includes('jain') || lower.includes('अल्पसंख्यक')) {
-        detectedCategory = 'minority';
-      } else if (lower.includes('pwd') || lower.includes('disabled') || lower.includes('handicap') || lower.includes('divyang') || lower.includes('दिव्यांग')) {
-        detectedCategory = 'pwd';
-      } else if (lower.includes('general') || lower.includes('सामान्य')) {
-        detectedCategory = 'general';
-      }
-
-      // Special occupation detection
-      let detectedOccupation = 'none';
-      if (lower.includes('vendor') || lower.includes('hawker') || lower.includes('street') || lower.includes('रेहड़ी') || lower.includes('ठेला') || lower.includes('फेरी')) {
-        detectedOccupation = 'street_vendor';
-      } else if (lower.includes('artisan') || lower.includes('craft') || lower.includes('vishwakarma') || lower.includes('carpenter') || lower.includes('blacksmith') || lower.includes('विश्वकर्मा') || lower.includes('कारीगर') || lower.includes('शिल्पकार')) {
-        detectedOccupation = 'artisan';
-      } else if (lower.includes('sanitation') || lower.includes('safai') || lower.includes('scavenger') || lower.includes('सफाई कर्मचारी') || lower.includes('स्वच्छता')) {
-        detectedOccupation = 'safai_karamchari';
-      } else if (lower.includes('weaver') || lower.includes('handloom') || lower.includes('textile') || lower.includes('बुनकर') || lower.includes('हथकरघा')) {
-        detectedOccupation = 'weaver';
-      }
-
+    // Immediate gate: Detect clear garbage / test smash / nonsensical text
+    if (detectGarbageInput(userText)) {
       return res.json({
-        purpose: isEdu ? 'education' : (detectedOccupation === 'sanitation' ? 'sanitation' : 'business'),
-        projectCost: cost,
-        annualIncome: income,
-        category: detectedCategory,
-        specialOccupation: detectedOccupation,
-        isPwd: detectedCategory === 'pwd' || lower.includes('divyang') || lower.includes('disab'),
-        gender: isFemale ? 'female' : 'male',
-        educationLocation: isAbroad ? 'abroad' : 'india',
-        explanationEn: `We understood that you need approximately ₹${cost.toLocaleString('en-IN')} for your ${isEdu ? 'course fee/education loan' : 'business venture'}. We have extracted your financial profile and mapped to verified national welfare schemes.`,
-        explanationHi: `हमने समझा कि आपको अपने ${isEdu ? 'शिक्षा ऋण / पाठ्यक्रम शुल्क' : 'व्यवसाय'} हेतु लगभग ₹${cost.toLocaleString('en-IN')} की आवश्यकता है। हमने राष्ट्रीय योजनाओं के अनुसार आपका विवरण तैयार कर दिया है।`,
+        isConfident: false,
+        purpose: null,
+        projectCost: null,
+        annualIncome: null,
+        category: null,
+        specialOccupation: 'none',
+        isPwd: false,
+        gender: 'male',
+        educationLocation: 'india',
+        missingFields: ['category', 'purpose', 'projectCost'],
+        needsCategoryConfirmation: false,
+        errorMessageEn: "We couldn't understand enough from your message. Please mention: your category, what you need funding for, and roughly how much you need.",
+        errorMessageHi: "हम आपके संदेश से पर्याप्त जानकारी नहीं समझ सके। कृपया अपनी सामाजिक श्रेणी, आवश्यकता का उद्देश्य, और आवश्यक अनुमानित राशि बताएं।",
       });
     }
 
-    const systemInstruction = `You are an expert financial intake assistant for Nidhi Sahayak, an AI-driven scheme matching platform for Indian marginalized and inclusive entrepreneurs (SIH Problem Statement 26092, MoSJE).
-Your task is to extract structured financial parameters from the user's free-text description in English, Hindi, or Hinglish.
-Return JSON with the exact fields:
-- purpose: "education" if user mentions any study, degree, college, course fee, tuition, B.Tech, MBA, MBBS, MS, schooling, university; "business" for shops, retail, enterprise, tailoring, manufacturing; "agriculture" for farming/dairy; "sanitation" for sanitation work/equipment; "services" for passenger transport/service center; "other" for others.
-- projectCost: number in INR representing the total required loan amount, project cost, or course fee (e.g., if user mentions 15 lakh, return 1500000; if 1.2 lakh, return 120000; if 3.5 lakh, return 350000; if 50 thousand, return 50000).
-- annualIncome: number in INR representing annual family income (e.g. if user mentions family income 2.5 lakh, return 250000; default to 200000 if not stated).
-- category: one of "sc", "st", "obc", "ews", "general", "minority", "pwd" (default "sc" if unspecified or if user mentions Scheduled Caste; set "st" for Scheduled Tribe; "obc" for Backward Classes; "minority" for Muslim, Christian, Sikh, Buddhist, Jain, Parsi; "pwd" for Persons with Disabilities/Divyangjan; "ews" for economically weaker; "general" for general category).
-- specialOccupation: one of "none", "street_vendor", "artisan", "safai_karamchari", "weaver" (set "street_vendor" for street vendors/hawkers/thela/rehri; "artisan" for traditional craftsmen/Vishwakarma/carpenter/blacksmith/potter; "safai_karamchari" for sanitation workers/scavengers; "weaver" for handloom weavers; otherwise "none").
-- isPwd: boolean (true if user mentions disability, handicap, or divyangjan).
-- gender: "male" | "female" | "other" (set "female" if user mentions woman, female, girl, sister, mother, or female pronouns; otherwise "male").
-- educationLocation: "abroad" if foreign country, abroad, USA, UK, etc. is mentioned; otherwise "india".
-- explanationEn: a concise, warm 2-sentence explanation of what was extracted (including whether it's Course Fee for education or Project Cost for business) and how it maps to national credit schemes.
-- explanationHi: a concise, warm 2-sentence explanation in Devanagari Hindi.`;
+    const ai = getGeminiClient();
+    if (!ai) {
+      // Run strict heuristic extractor
+      const h = extractHeuristicParameters(userText);
+
+      // Check for garbage or missing fields
+      if (!h.detectedPurpose && !h.detectedCost && !h.detectedCategory) {
+        return res.json({
+          isConfident: false,
+          purpose: null,
+          projectCost: null,
+          annualIncome: null,
+          category: null,
+          specialOccupation: 'none',
+          isPwd: false,
+          gender: 'male',
+          educationLocation: 'india',
+          missingFields: ['category', 'purpose', 'projectCost'],
+          needsCategoryConfirmation: false,
+          errorMessageEn: "We couldn't understand enough from your message. Please mention: your category, what you need funding for, and roughly how much you need.",
+          errorMessageHi: "हम आपके संदेश से पर्याप्त जानकारी नहीं समझ सके। कृपया अपनी सामाजिक श्रेणी, आवश्यकता का उद्देश्य, और आवश्यक अनुमानित राशि बताएं।",
+        });
+      }
+
+      // If category is missing, do NOT assume SC!
+      if (!h.detectedCategory) {
+        return res.json({
+          isConfident: true,
+          purpose: h.detectedPurpose,
+          projectCost: h.detectedCost,
+          annualIncome: h.detectedIncome,
+          category: null,
+          specialOccupation: h.detectedOccupation,
+          city: h.detectedCity,
+          isPwd: h.isPwd,
+          gender: h.isFemale ? 'female' : 'male',
+          educationLocation: h.isAbroad ? 'abroad' : 'india',
+          missingFields: ['category'],
+          needsCategoryConfirmation: true,
+          errorMessageEn: null,
+          errorMessageHi: null,
+          explanationEn: `We understood that you need ${h.detectedCost ? `₹${h.detectedCost.toLocaleString('en-IN')}` : 'funding'} for ${h.detectedPurpose || 'your project'}. Please confirm your beneficiary category before proceeding.`,
+          explanationHi: `हमने समझा कि आपको ${h.detectedPurpose === 'education' ? 'शिक्षा' : 'परियोजना'} हेतु ${h.detectedCost ? `₹${h.detectedCost.toLocaleString('en-IN')}` : 'राशि'} की आवश्यकता है। आगे बढ़ने से पहले कृपया अपनी सामाजिक श्रेणी की पुष्टि करें।`,
+        });
+      }
+
+      return res.json({
+        isConfident: true,
+        purpose: h.detectedPurpose,
+        projectCost: h.detectedCost,
+        annualIncome: h.detectedIncome,
+        category: h.detectedCategory,
+        specialOccupation: h.detectedOccupation,
+        city: h.detectedCity,
+        isPwd: h.isPwd,
+        gender: h.isFemale ? 'female' : 'male',
+        educationLocation: h.isAbroad ? 'abroad' : 'india',
+        missingFields: [],
+        needsCategoryConfirmation: false,
+        errorMessageEn: null,
+        errorMessageHi: null,
+        explanationEn: `We extracted your requirement of ₹${(h.detectedCost || 0).toLocaleString('en-IN')} for ${h.detectedPurpose} (${h.detectedCategory.toUpperCase()}). Ready for scheme matching.`,
+        explanationHi: `₹${(h.detectedCost || 0).toLocaleString('en-IN')} (${h.detectedPurpose === 'education' ? 'शिक्षा' : 'व्यवसाय'}), श्रेणी: ${h.detectedCategory.toUpperCase()} निकाली गई। योजना मिलान हेतु तैयार।`,
+      });
+    }
+
+    const systemInstruction = `You are a strict financial intake assistant for Nidhi Sahayak (SIH Problem Statement 26092, MoSJE).
+Analyze user text and extract parameters ONLY if explicitly present.
+CRITICAL RULES:
+1. NEVER assume, invent, or default any field!
+2. If text is gibberish, nonsensical, keyboard smash (e.g. "asdkjaskjd 12345 blah"), or test noise, set isConfident=false and set purpose=null, projectCost=null, annualIncome=null, category=null.
+3. purpose: ONLY extract if stated: "education" for studies/college/degree/tuition; "business" for shops/trade/tailoring/retail; "agriculture" for farming/dairy; "sanitation" for sanitation work; "services" for transport/taxi/services; "other" for others. If not mentioned or unclear, return null.
+4. projectCost: ONLY extract numerical amount/fee/cost/loan (e.g. 15 lakh -> 1500000, 20000 -> 20000). If not mentioned, return null.
+5. annualIncome: ONLY extract if income is stated. If not mentioned, return null.
+6. category: ONLY extract if mentioned: "sc", "st", "obc", "minority", "pwd", "ews", "general". DO NOT ASSUME OR DEFAULT TO SC. If not stated, return null.
+7. specialOccupation: "street_vendor", "artisan", "safai_karamchari", "weaver", or "none".
+8. isPwd: boolean (true if mentions disability/handicap/divyangjan).
+9. gender: "female" if woman/female/girl; otherwise "male".
+10. If category, purpose, or projectCost is missing, list them in missingFields.
+11. If isConfident is false, set explanationEn to "We couldn't understand enough from your message. Please mention: your category, what you need funding for, and roughly how much you need." and Hindi in explanationHi.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-3.6-flash',
       contents: `Parse this user situation description: "${userText}"`,
       config: {
         systemInstruction,
@@ -133,18 +304,24 @@ Return JSON with the exact fields:
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            purpose: { type: Type.STRING },
-            projectCost: { type: Type.NUMBER },
-            annualIncome: { type: Type.NUMBER },
-            category: { type: Type.STRING },
-            specialOccupation: { type: Type.STRING },
-            isPwd: { type: Type.BOOLEAN },
-            gender: { type: Type.STRING },
-            educationLocation: { type: Type.STRING },
+            isConfident: { type: Type.BOOLEAN },
+            purpose: { type: Type.STRING, nullable: true },
+            projectCost: { type: Type.NUMBER, nullable: true },
+            annualIncome: { type: Type.NUMBER, nullable: true },
+            category: { type: Type.STRING, nullable: true },
+            specialOccupation: { type: Type.STRING, nullable: true },
+            city: { type: Type.STRING, nullable: true },
+            isPwd: { type: Type.BOOLEAN, nullable: true },
+            gender: { type: Type.STRING, nullable: true },
+            educationLocation: { type: Type.STRING, nullable: true },
+            missingFields: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
             explanationEn: { type: Type.STRING },
             explanationHi: { type: Type.STRING },
           },
-          required: ['purpose', 'projectCost', 'annualIncome', 'category', 'gender', 'explanationEn', 'explanationHi'],
+          required: ['isConfident', 'missingFields', 'explanationEn', 'explanationHi'],
         },
       },
     });
@@ -152,29 +329,77 @@ Return JSON with the exact fields:
     const parsed = JSON.parse(response.text?.trim() || '{}');
     const validCategories = ['sc', 'st', 'obc', 'ews', 'general', 'minority', 'pwd'];
     const validOccupations = ['none', 'street_vendor', 'artisan', 'safai_karamchari', 'weaver'];
+    const validPurposes = ['business', 'education', 'agriculture', 'sanitation', 'services', 'other'];
+
+    const extractedCategory = validCategories.includes(parsed.category) ? parsed.category : null;
+    const extractedPurpose = validPurposes.includes(parsed.purpose) ? parsed.purpose : null;
+    const extractedCost = typeof parsed.projectCost === 'number' && parsed.projectCost > 0 ? parsed.projectCost : null;
+    const extractedIncome = typeof parsed.annualIncome === 'number' && parsed.annualIncome >= 0 ? parsed.annualIncome : null;
+
+    if (!parsed.isConfident || (!extractedPurpose && !extractedCost && !extractedCategory)) {
+      return res.json({
+        isConfident: false,
+        purpose: null,
+        projectCost: null,
+        annualIncome: null,
+        category: null,
+        specialOccupation: 'none',
+        isPwd: false,
+        gender: 'male',
+        educationLocation: 'india',
+        missingFields: ['category', 'purpose', 'projectCost'],
+        needsCategoryConfirmation: false,
+        errorMessageEn: "We couldn't understand enough from your message. Please mention: your category, what you need funding for, and roughly how much you need.",
+        errorMessageHi: "हम आपके संदेश से पर्याप्त जानकारी नहीं समझ सके। कृपया अपनी सामाजिक श्रेणी, आवश्यकता का उद्देश्य, और आवश्यक अनुमानित राशि बताएं।",
+      });
+    }
+
+    const needsCategoryConfirmation = !extractedCategory;
 
     return res.json({
-      purpose: parsed.purpose || 'business',
-      projectCost: typeof parsed.projectCost === 'number' ? parsed.projectCost : 120000,
-      annualIncome: typeof parsed.annualIncome === 'number' ? parsed.annualIncome : 200000,
-      category: validCategories.includes(parsed.category) ? parsed.category : 'sc',
+      isConfident: true,
+      purpose: extractedPurpose,
+      projectCost: extractedCost,
+      annualIncome: extractedIncome,
+      category: extractedCategory,
       specialOccupation: validOccupations.includes(parsed.specialOccupation) ? parsed.specialOccupation : 'none',
-      isPwd: Boolean(parsed.isPwd),
-      gender: parsed.gender || 'male',
-      educationLocation: parsed.educationLocation || 'india',
-      explanationEn: parsed.explanationEn || 'Extracted details ready for scheme matching.',
-      explanationHi: parsed.explanationHi || 'निकाली गई जानकारी योजना मिलान हेतु तैयार है।',
+      city: parsed.city || null,
+      isPwd: Boolean(parsed.isPwd || extractedCategory === 'pwd'),
+      gender: parsed.gender === 'female' ? 'female' : 'male',
+      educationLocation: parsed.educationLocation === 'abroad' ? 'abroad' : 'india',
+      missingFields: needsCategoryConfirmation ? ['category'] : [],
+      needsCategoryConfirmation,
+      errorMessageEn: null,
+      errorMessageHi: null,
+      explanationEn: parsed.explanationEn || (needsCategoryConfirmation
+        ? 'Funding requirement detected. Please select your social category to proceed.'
+        : 'Extracted details ready for scheme matching.'),
+      explanationHi: parsed.explanationHi || (needsCategoryConfirmation
+        ? 'आवश्यकता दर्ज की गई। आगे बढ़ने हेतु कृपया अपनी सामाजिक श्रेणी चुनें।'
+        : 'निकाली गई जानकारी योजना मिलान हेतु तैयार है।'),
     });
   } catch (error: any) {
-    console.error('Error parsing situation:', error);
-    return res.status(500).json({ error: error.message || 'Failed to parse situation' });
+    console.error('Error parsing situation with AI:', error);
+    // Explicit error response - do NOT silently fall back to hardcoded default values
+    return res.status(500).json({
+      isConfident: false,
+      error: 'AI_SERVICE_ERROR',
+      errorDetails: error?.message || String(error),
+      errorMessageEn: 'The AI parsing service encountered an error while processing your request. Please try again or use the manual form.',
+      errorMessageHi: 'एआई सेवा में एक त्रुटि उत्पन्न हुई। कृपया पुनः प्रयास करें अथवा मैन्युअल फ़ॉर्म का उपयोग करें।',
+    });
   }
 });
 
 // API Route: Explain scheme match in natural language
 app.post('/api/ai/explain-scheme', async (req, res) => {
   try {
-    const { schemeName, agency, projectCost, annualIncome, userCategory, language = 'en', category } = req.body;
+    const schemeName = req.body.schemeName || req.body.scheme?.nameEn || req.body.scheme?.nameHi || 'Welfare Scheme';
+    const agency = req.body.agency || req.body.scheme?.agency || 'Government welfare agency';
+    const projectCost = req.body.projectCost || req.body.profile?.projectCost || 0;
+    const annualIncome = req.body.annualIncome || req.body.profile?.annualIncome || 0;
+    const userCategory = req.body.userCategory || req.body.profile?.category || 'Beneficiary';
+    const language = req.body.language || 'en';
 
     const ai = getGeminiClient();
     if (!ai) {
@@ -188,7 +413,7 @@ app.post('/api/ai/explain-scheme', async (req, res) => {
     const prompt = `Explain in warm, dignified, and encouraging ${language === 'hi' ? 'Hindi (Devanagari script)' : 'English'} why the national scheme "${schemeName}" offered by ${agency || 'Government welfare agency'} is the ideal match for an applicant in category "${userCategory || 'Beneficiary'}" with project cost ₹${projectCost} and family annual income ₹${annualIncome}. Give 3 concise, practical next steps to prepare documents and approach the nearest Channel Partner (SCA, Public Sector Bank, RRB, or MFI). Keep the tone respectful and clear.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
         temperature: 0.7,
@@ -206,10 +431,15 @@ app.post('/api/ai/explain-scheme', async (req, res) => {
 
 // Start Express and integrate Vite middleware
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -221,7 +451,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Nidhi Sahayak server running at http://0.0.0.0:${PORT}`);
   });
 }

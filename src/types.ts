@@ -6,12 +6,14 @@ export type SpecialOccupation = 'none' | 'street_vendor' | 'artisan' | 'safai_ka
 
 export type SchemeCategory = 'micro' | 'term' | 'education' | 'mahila' | 'general';
 
+export type PurposeType = 'business' | 'education' | 'agriculture' | 'sanitation' | 'services' | 'other';
+
 export interface UserProfile {
-  purpose: 'business' | 'education' | 'agriculture' | 'sanitation' | 'services' | 'other';
-  projectCost: number;
-  annualIncome: number;
-  category: BeneficiaryCategory;
-  specialOccupation?: SpecialOccupation;
+  purpose: PurposeType | null;
+  projectCost: number | null;
+  annualIncome: number | null;
+  category: BeneficiaryCategory | null;
+  specialOccupation?: SpecialOccupation | null;
   isPwd?: boolean;
   gender?: 'male' | 'female' | 'other';
   educationLocation?: 'india' | 'abroad';
@@ -19,6 +21,19 @@ export interface UserProfile {
   hasProjectReport?: boolean;
   state?: string;
   city?: string;
+}
+
+export interface CalculatorState {
+  schemeId: string | null;
+  schemeNameEn: string | null;
+  schemeNameHi: string | null;
+  agency: string | null;
+  agencyShort: string | null;
+  loanAmount: number;
+  interestRate: number;
+  tenureMonths: number;
+  moratoriumMonths: number;
+  isAutoPopulated: boolean;
 }
 
 export interface SchemeRecommendation {
@@ -59,27 +74,23 @@ export interface SchemeRecommendation {
   notes?: string;
 }
 
+export type AgencyType = 'SCA' | 'RRB' | 'Nationalised Bank';
+
 export interface Partner {
   id: string;
-  nameEn: string;
-  nameHi: string;
-  type: 'SCA' | 'PSB' | 'RRB' | 'NBFC-MFI';
-  typeNameEn: string;
-  typeNameHi: string;
-  addressEn: string;
-  addressHi: string;
-  city: string;
+  agencyName: string;
+  agencyType: AgencyType;
   state: string;
-  distanceKm: number;
-  loadStatus: 'low' | 'medium' | 'full'; // green (low), yellow (medium), red (full)
-  loadLabelEn: string;
-  loadLabelHi: string;
-  fundUtilizationRate: number; // in %
-  phone: string;
-  email: string;
-  timings: string;
-  coordinates: { x: number; y: number; lat: number; lng: number }; // normalized coords for SVG map
-  recommended: boolean;
+  city: string;
+  address: string;
+  phone: string[];
+  fax?: string;
+  email: string[];
+  website?: string;
+  note?: string;
+  corporationsCovered?: string;
+  dataSource: 'verified';
+  sourceReference: string;
 }
 
 export interface DocumentItem {

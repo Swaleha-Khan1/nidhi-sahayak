@@ -131,7 +131,7 @@ export function mapRawToRecommendation(
     incomeLimit = Math.max(...Object.values(raw.income_ceiling_inr));
   }
 
-  const incomeOk = incomeLimit === null || profile.annualIncome <= incomeLimit;
+  const incomeOk = incomeLimit === null || (typeof profile.annualIncome === 'number' ? profile.annualIncome <= incomeLimit : true);
 
   // Repayment years
   const repaymentYears = typeof raw.repayment_years_max === 'number' ? raw.repayment_years_max : 5;
@@ -197,18 +197,46 @@ export function mapRawToRecommendation(
   };
 }
 
-/**
- * Universal Rule-Based Eligibility Engine based on Unified 20-Schemes Catalog
- */
-export function evaluateEligibility(profile: UserProfile): {
+export interface EligibilityEvaluationResult {
+  hasSufficientData: boolean;
+  missingFields: string[];
   isGatePassed: boolean;
   gateFailureReasonEn?: string;
   gateFailureReasonHi?: string;
   isFallbackActive: boolean;
-  primaryScheme: SchemeRecommendation;
+  primaryScheme: SchemeRecommendation | null;
   allEligibleSchemes: SchemeRecommendation[];
   nearMisses: SchemeRecommendation[];
-} {
+}
+
+/**
+ * Universal Rule-Based Eligibility Engine based on Unified 20-Schemes Catalog
+ */
+export function evaluateEligibility(profile: UserProfile): EligibilityEvaluationResult {
+  const hasSufficientData = Boolean(
+    profile.category &&
+    profile.purpose &&
+    typeof profile.projectCost === 'number' &&
+    profile.projectCost > 0
+  );
+
+  if (!hasSufficientData) {
+    const missingFields: string[] = [];
+    if (!profile.category) missingFields.push('category');
+    if (!profile.purpose) missingFields.push('purpose');
+    if (!profile.projectCost || profile.projectCost <= 0) missingFields.push('projectCost');
+
+    return {
+      hasSufficientData: false,
+      missingFields,
+      isGatePassed: false,
+      isFallbackActive: false,
+      primaryScheme: null,
+      allEligibleSchemes: [],
+      nearMisses: [],
+    };
+  }
+
   const cost = profile.projectCost || 100000;
   const isEducation = profile.purpose === 'education';
   const occupation = profile.specialOccupation || 'none';
@@ -280,10 +308,14 @@ export function evaluateEligibility(profile: UserProfile): {
 
     // Income ceiling fit
     if (typeof raw.income_ceiling_inr === 'number') {
-      if (profile.annualIncome <= raw.income_ceiling_inr) {
-        score += 15;
+      if (typeof profile.annualIncome === 'number') {
+        if (profile.annualIncome <= raw.income_ceiling_inr) {
+          score += 15;
+        } else {
+          score -= 35; // Income disqualified
+        }
       } else {
-        score -= 35; // Income disqualified
+        score += 5;
       }
     }
 
@@ -301,7 +333,11 @@ export function evaluateEligibility(profile: UserProfile): {
   let gateFailureReasonEn: string | undefined;
   let gateFailureReasonHi: string | undefined;
 
-  if (primaryScheme.incomeCeiling && profile.annualIncome > primaryScheme.incomeCeiling) {
+  if (
+    primaryScheme.incomeCeiling !== null &&
+    typeof profile.annualIncome === 'number' &&
+    profile.annualIncome > primaryScheme.incomeCeiling
+  ) {
     isGatePassed = false;
     gateFailureReasonEn = `Annual family income (₹${profile.annualIncome.toLocaleString('en-IN')}) exceeds the scheme limit of ₹${primaryScheme.incomeCeiling.toLocaleString('en-IN')}.`;
     gateFailureReasonHi = `पारिवारिक वार्षिक आय (₹${profile.annualIncome.toLocaleString('en-IN')}) योजना की अधिकतम सीमा ₹${primaryScheme.incomeCeiling.toLocaleString('en-IN')} से अधिक है।`;
@@ -346,6 +382,8 @@ export function evaluateEligibility(profile: UserProfile): {
   }
 
   return {
+    hasSufficientData: true,
+    missingFields: [],
     isGatePassed,
     gateFailureReasonEn,
     gateFailureReasonHi,
